@@ -1891,6 +1891,17 @@ describe('EcosystemService', () => {
       txRates: {},
       partialId: null,
       phaseTimings: { displayMetadataMs: 0, probePaginatorMs: 0, gapClosingMs: 0 },
+      subProbeTimings: {
+        fetchEntryFunctionsMs: 0,
+        countEventsMs: 0,
+        sampleEventTypesMs: 0,
+        updateSendersForModuleMs: 0,
+        probeIdentityFieldsMs: 0,
+        probeTxEffectsMs: 0,
+        updateTxCountForPackageMs: 0,
+        objectTypesMs: 0,
+        totalPackages: 0,
+      },
     };
 
     it('saves the raw snapshot returned by captureRaw, enriched with captureDurationMs', async () => {
@@ -1985,6 +1996,43 @@ describe('EcosystemService', () => {
       expect(line).toMatch(/gapClosing=0s/);
       expect(line).toMatch(/finalize=\d+s/);
       expect(line).toMatch(/persistClassified=\d+s/);
+    });
+
+    it('emits a "Mainnet sub-probe phases:" log line decomposing the per-package probe loop into the 8 sub-probe wall-clock totals', async () => {
+      // The 5-phase log tells us probePaginator dominates a slow tick
+      // (snap 42/54: 63min vs 44min baseline) but not WHICH sub-probe
+      // is the culprit. This second log line decomposes that — same
+      // pattern as testnet (commit 5879879).
+      const logSpy = jest.spyOn((service as any).logger, 'log').mockImplementation(() => {});
+      jest.spyOn(service as any, 'captureRaw').mockResolvedValue({
+        ...rawStub,
+        subProbeTimings: {
+          fetchEntryFunctionsMs: 90_000,
+          countEventsMs: 1_500_000,
+          sampleEventTypesMs: 30_000,
+          updateSendersForModuleMs: 1_200_000,
+          probeIdentityFieldsMs: 250_000,
+          probeTxEffectsMs: 80_000,
+          updateTxCountForPackageMs: 800_000,
+          objectTypesMs: 350_000,
+          totalPackages: 753,
+        },
+      });
+      await service.capture();
+      const phaseLogCall = logSpy.mock.calls.find(
+        (c) => typeof c[0] === 'string' && c[0].startsWith('Mainnet sub-probe phases'),
+      );
+      expect(phaseLogCall).toBeDefined();
+      const line = phaseLogCall![0] as string;
+      expect(line).toMatch(/totalPackages=753/);
+      expect(line).toMatch(/fetchEntryFunctions=90s/);
+      expect(line).toMatch(/countEvents=1500s/);
+      expect(line).toMatch(/sampleEventTypes=30s/);
+      expect(line).toMatch(/updateSendersForModule=1200s/);
+      expect(line).toMatch(/probeIdentityFields=250s/);
+      expect(line).toMatch(/probeTxEffects=80s/);
+      expect(line).toMatch(/updateTxCountForPackage=800s/);
+      expect(line).toMatch(/objectTypes=350s/);
     });
 
     it('no-ops a concurrent capture while one is already in flight', async () => {
@@ -2616,6 +2664,17 @@ describe('EcosystemService', () => {
       txRates: {},
       partialId: null,
       phaseTimings: { displayMetadataMs: 0, probePaginatorMs: 0, gapClosingMs: 0 },
+      subProbeTimings: {
+        fetchEntryFunctionsMs: 0,
+        countEventsMs: 0,
+        sampleEventTypesMs: 0,
+        updateSendersForModuleMs: 0,
+        probeIdentityFieldsMs: 0,
+        probeTxEffectsMs: 0,
+        updateTxCountForPackageMs: 0,
+        objectTypesMs: 0,
+        totalPackages: 0,
+      },
     };
     const origNetwork = process.env.IOTA_NETWORK;
     afterEach(() => {
@@ -6628,6 +6687,7 @@ describe('EcosystemService', () => {
             txRates: {},
             partialId: null,
             phaseTimings: { displayMetadataMs: 0, probePaginatorMs: 105 * 60 * 1000, gapClosingMs: 0 },
+            subProbeTimings: (EcosystemService as any).newSubProbeTimings(),
           };
         });
         await service.capture();
@@ -8047,7 +8107,7 @@ describe('EcosystemService', () => {
 
       await (service as any).captureRaw();
 
-      expect(gapSpy).toHaveBeenCalledWith('mainnet', expect.any(Date), expect.any(Number), expect.any(Map));
+      expect(gapSpy).toHaveBeenCalledWith('mainnet', expect.any(Date), expect.any(Number), expect.any(Map), expect.any(Object));
       expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Mainnet gap-closing probed 1 stale pkgs'));
       // Placeholder partial created since no partial existed and gap-closed pkgs need an anchor.
       expect(safeCreateSpy).toHaveBeenCalledWith(expect.objectContaining({

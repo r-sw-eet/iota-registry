@@ -1463,6 +1463,23 @@ export class EcosystemService implements OnModuleInit, OnApplicationShutdown {
           `persistClassified=${sec(persistClassifiedMs)}`,
       );
 
+      // Sub-probe wall-clock decomposes `probePaginator` (and `gapClosing`)
+      // into which per-package GraphQL call ate the budget — same
+      // instrumentation we ship on testnet (commit 5879879).
+      // Mirrors the testnet format for grep'ability.
+      const sp = raw.subProbeTimings;
+      this.logger.log(
+        `Mainnet sub-probe phases (totalPackages=${sp.totalPackages}): ` +
+          `fetchEntryFunctions=${sec(sp.fetchEntryFunctionsMs)} ` +
+          `countEvents=${sec(sp.countEventsMs)} ` +
+          `sampleEventTypes=${sec(sp.sampleEventTypesMs)} ` +
+          `updateSendersForModule=${sec(sp.updateSendersForModuleMs)} ` +
+          `probeIdentityFields=${sec(sp.probeIdentityFieldsMs)} ` +
+          `probeTxEffects=${sec(sp.probeTxEffectsMs)} ` +
+          `updateTxCountForPackage=${sec(sp.updateTxCountForPackageMs)} ` +
+          `objectTypes=${sec(sp.objectTypesMs)}`,
+      );
+
       const durationMin = Math.round(durationMs / 60000);
       const summary =
         `Ecosystem snapshot saved in ${durationMin}min (${Math.round(durationMs / 1000)}s): ` +
@@ -3355,6 +3372,15 @@ export class EcosystemService implements OnModuleInit, OnApplicationShutdown {
       probePaginatorMs: number;
       gapClosingMs: number;
     };
+    /**
+     * Per-sub-probe wall-clock accumulator covering every `probeOnePackage`
+     * call inside this tick (both `probePaginator` and `runGapClosing`).
+     * Decomposes the `probePaginatorMs` total into which sub-probe
+     * (`countEvents`, `updateSendersForModule`,
+     * `captureObjectTypesForPackage`, etc.) ate the budget — the answer
+     * for "what made snap 42/54 slow" that the 5-phase log can't give.
+     */
+    subProbeTimings: SubProbeTimings;
   }> {
     // Display metadata pre-pass: one paginated fetch of every
     // `0x2::display::Display<T>` object on chain, grouped by the inner-type
@@ -3415,6 +3441,10 @@ export class EcosystemService implements OnModuleInit, OnApplicationShutdown {
     };
 
     const deadlineMs = captureStart.getTime() + EcosystemService.MAINNET_TICK_BUDGET_MS;
+    // Per-sub-probe accumulator threaded through both probePaginator and
+    // runGapClosing so a slow tick (snap 42/54: probePaginatorMs at 63min
+    // vs 44min baseline) decomposes into which sub-probe spiked.
+    const subProbeTimings = EcosystemService.newSubProbeTimings();
     const tProbe = Date.now();
     const {
       probed: freshlyProbed,
@@ -3430,6 +3460,7 @@ export class EcosystemService implements OnModuleInit, OnApplicationShutdown {
       claimedAddresses,
       onCheckpoint,
       checkpointEveryN: EcosystemService.MAINNET_CHECKPOINT_EVERY_N,
+      subProbeTimings,
     });
     const probePaginatorMs = Date.now() - tProbe;
 
@@ -3459,7 +3490,7 @@ export class EcosystemService implements OnModuleInit, OnApplicationShutdown {
     let gapClosingMs = 0;
     if (wrapped && Date.now() < deadlineMs) {
       const tGap = Date.now();
-      const gc = await this.runGapClosing('mainnet', new Date(), deadlineMs, displayByPackage);
+      const gc = await this.runGapClosing('mainnet', new Date(), deadlineMs, displayByPackage, subProbeTimings);
       gapClosingMs = Date.now() - tGap;
       gapClosed = gc.probed;
       if (gapClosed.length > 0) {
@@ -3538,6 +3569,7 @@ export class EcosystemService implements OnModuleInit, OnApplicationShutdown {
         probePaginatorMs,
         gapClosingMs,
       },
+      subProbeTimings,
     };
   }
 
@@ -4977,6 +5009,13 @@ export class EcosystemService implements OnModuleInit, OnApplicationShutdown {
     claimedAddresses: Set<string>;
     onCheckpoint?: (batch: PackageFact[], cursor: string | null) => Promise<void>;
     checkpointEveryN?: number;
+    /**
+     * Optional caller-supplied per-sub-probe wall-clock accumulator.
+     * Threaded into each `probeOnePackage` call so a slow tick can be
+     * decomposed into which sub-probe (`countEvents`, `updateSenders…`,
+     * `captureObjectTypesForPackage`, etc.) was the actual culprit.
+     */
+    subProbeTimings?: SubProbeTimings;
   }): Promise<{
     probed: PackageFact[];
     nextCursor: string | null;
@@ -4994,6 +5033,7 @@ export class EcosystemService implements OnModuleInit, OnApplicationShutdown {
       claimedAddresses,
       onCheckpoint,
       checkpointEveryN,
+      subProbeTimings,
     } = opts;
     const probed: PackageFact[] = [];
     const failedPackages: { address: string; error: string }[] = [];
@@ -5029,7 +5069,7 @@ export class EcosystemService implements OnModuleInit, OnApplicationShutdown {
             continue;
           }
           try {
-            const fact = await this.probeOnePackage(info, displayByPackage, now, network);
+            const fact = await this.probeOnePackage(info, displayByPackage, now, network, subProbeTimings);
             probed.push(fact);
           } catch (e) {
             const err = e as Error;
@@ -5126,6 +5166,7 @@ export class EcosystemService implements OnModuleInit, OnApplicationShutdown {
     now: Date,
     deadlineMs: number,
     displayByPackage: Map<string, Array<{ key: string; value: string }>>,
+    subProbeTimings?: SubProbeTimings,
   ): Promise<{ probed: PackageFact[]; exhaustedCandidates: boolean; deadlineHit: boolean }> {
     const probed: PackageFact[] = [];
     if (Date.now() >= deadlineMs) {
@@ -5161,7 +5202,7 @@ export class EcosystemService implements OnModuleInit, OnApplicationShutdown {
           // handle gracefully) — skip without failing the whole pass.
           continue;
         }
-        const fact = await this.probeOnePackage(info, displayByPackage, now, network);
+        const fact = await this.probeOnePackage(info, displayByPackage, now, network, subProbeTimings);
         probed.push(fact);
       } catch (e) {
         this.logger.warn(
