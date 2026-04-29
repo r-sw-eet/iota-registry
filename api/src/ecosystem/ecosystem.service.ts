@@ -2018,8 +2018,16 @@ export class EcosystemService implements OnModuleInit, OnApplicationShutdown {
     emittingModule: string,
     opts: { prevCount?: number; prevCursor?: string | null; maxPages?: number } = {},
   ): Promise<{ count: number; cursor: string | null; capped: boolean }> {
-    const prevCount = opts.prevCount ?? 0;
     const prevCursor = opts.prevCursor ?? null;
+    // CRITICAL: `prevCount` is only valid when paired with `prevCursor`.
+    // Without a cursor we walk from genesis — adding the prior count
+    // would double-count every event. Initial bootstrap (post-deploy
+    // tick where the new `eventsCursor` field is still null on every
+    // legacy packagefact) must therefore start at zero. Discovered
+    // 2026-04-29 when the first bootstrap produced 26.3M events on
+    // mainnet vs the real 13.2M — old facts had non-zero `events`
+    // but no `eventsCursor`, so `prevCount + full-walk` doubled.
+    const prevCount = prevCursor ? (opts.prevCount ?? 0) : 0;
     const maxPages = opts.maxPages ?? 50000;
     let pageCount = 0;
     let total = prevCount;

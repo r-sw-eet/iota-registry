@@ -4396,6 +4396,34 @@ describe('EcosystemService', () => {
       expect(fetchMock.mock.calls[0][1].body).toMatch(/after: \\?"c100\\?"/);
     });
 
+    it('regression: prevCount is ignored when prevCursor is null (would otherwise double-count on bootstrap)', async () => {
+      // Discovered 2026-04-29 in production: the first bootstrap after
+      // adding the eventsCursor field read legacy packagefacts where
+      // events=1.48M but eventsCursor=null (field didn't exist before).
+      // Without the guard, countEvents started at total=1.48M and then
+      // walked from genesis adding all events again → 2.96M. Doubled
+      // every per-module count across the whole tick. With the guard,
+      // a missing prevCursor forces total=0 regardless of prevCount.
+      fetchMock.mockResolvedValueOnce({
+        json: async () => ({
+          data: {
+            events: {
+              nodes: Array.from({ length: 5 }, () => ({ __typename: 'E' })),
+              pageInfo: { hasNextPage: false, endCursor: 'cFresh' },
+            },
+          },
+        }),
+      });
+      // Caller passes prevCount=1_484_566 but prevCursor=null
+      // (the legacy-fact-with-no-cursor scenario). The implementation
+      // must IGNORE prevCount and start total=0.
+      const r = await count('0xpkg::mod', { prevCount: 1_484_566, prevCursor: null });
+      expect(r).toEqual({ count: 5, cursor: 'cFresh', capped: false });
+      // First (only) GraphQL call must NOT include `after: ...` —
+      // it's a genuine bootstrap walk.
+      expect(fetchMock.mock.calls[0][1].body).not.toMatch(/after:/);
+    });
+
     it('carry-forward: dormant module (zero new events) keeps prevCursor + prevCount unchanged', async () => {
       // The "free_nft has been silent since March 15" case. Single
       // page returns zero events with hasNextPage:false and endCursor:null.
