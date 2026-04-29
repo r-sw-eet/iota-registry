@@ -4317,7 +4317,7 @@ describe('EcosystemService', () => {
 
   describe('countEvents (private)', () => {
     const count = (...args: any[]) =>
-      (service as any).countEvents(...args) as Promise<{ count: number; capped: boolean }>;
+      (service as any).countEvents(...args) as Promise<{ count: number; cursor: string | null; capped: boolean }>;
 
     it('sums events across pages until hasNextPage is false', async () => {
       fetchMock
@@ -4336,13 +4336,15 @@ describe('EcosystemService', () => {
             data: {
               events: {
                 nodes: Array.from({ length: 20 }, () => ({ __typename: 'E' })),
-                pageInfo: { hasNextPage: false, endCursor: null },
+                pageInfo: { hasNextPage: false, endCursor: 'c2' },
               },
             },
           }),
         });
       const r = await count('0xpkg::mod');
-      expect(r).toEqual({ count: 70, capped: false });
+      // Cursor advances to last seen (`c2`), so the next tick can resume
+      // from there. count is 70, capped false.
+      expect(r).toEqual({ count: 70, cursor: 'c2', capped: false });
       expect(fetchMock.mock.calls[1][1].body).toMatch(/after: \\?"c1\\?"/);
     });
 
@@ -4351,7 +4353,8 @@ describe('EcosystemService', () => {
         json: async () => ({ errors: [{ message: 'boom' }] }),
       });
       const r = await count('0xpkg::mod');
-      expect(r).toEqual({ count: 0, capped: false });
+      // No pages succeeded → cursor stays null (no resume point yet).
+      expect(r).toEqual({ count: 0, cursor: null, capped: false });
     });
 
     it('flags capped=true when hitting the maxPages limit', async () => {
@@ -4365,9 +4368,48 @@ describe('EcosystemService', () => {
           },
         }),
       });
-      const r = await count('0xpkg::mod', 2);
+      const r = await count('0xpkg::mod', { maxPages: 2 });
       expect(r.capped).toBe(true);
       expect(r.count).toBe(100);
+      // Cursor advanced to the last seen — next tick resumes from `c`,
+      // continues counting from where this run capped.
+      expect(r.cursor).toBe('c');
+    });
+
+    it('carry-forward: resumes from prevCursor + adds delta to prevCount', async () => {
+      // Steady-state delta tick: prev tick counted 1000 events, stored
+      // cursor `c100`. This tick walks from `after: "c100"` and finds
+      // 30 new events. New total = 1030, cursor advances to `c101`.
+      fetchMock.mockResolvedValueOnce({
+        json: async () => ({
+          data: {
+            events: {
+              nodes: Array.from({ length: 30 }, () => ({ __typename: 'E' })),
+              pageInfo: { hasNextPage: false, endCursor: 'c101' },
+            },
+          },
+        }),
+      });
+      const r = await count('0xpkg::mod', { prevCount: 1000, prevCursor: 'c100' });
+      expect(r).toEqual({ count: 1030, cursor: 'c101', capped: false });
+      // First (and only) GraphQL call must include the resume cursor.
+      expect(fetchMock.mock.calls[0][1].body).toMatch(/after: \\?"c100\\?"/);
+    });
+
+    it('carry-forward: dormant module (zero new events) keeps prevCursor + prevCount unchanged', async () => {
+      // The "free_nft has been silent since March 15" case. Single
+      // page returns zero events with hasNextPage:false and endCursor:null.
+      // We must keep the stored cursor so the next tick still resumes
+      // from the right position — never null it out.
+      fetchMock.mockResolvedValueOnce({
+        json: async () => ({
+          data: {
+            events: { nodes: [], pageInfo: { hasNextPage: false, endCursor: null } },
+          },
+        }),
+      });
+      const r = await count('0xpkg::mod', { prevCount: 1_484_566, prevCursor: 'cMar15' });
+      expect(r).toEqual({ count: 1_484_566, cursor: 'cMar15', capped: false });
     });
   });
 
@@ -8160,7 +8202,7 @@ describe('EcosystemService', () => {
 
       await (service as any).captureRaw();
 
-      expect(gapSpy).toHaveBeenCalledWith('mainnet', expect.any(Date), expect.any(Number), expect.any(Map), expect.any(Object));
+      expect(gapSpy).toHaveBeenCalledWith('mainnet', expect.any(Date), expect.any(Number), expect.any(Map), expect.any(Object), expect.any(Map));
       expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Mainnet gap-closing probed 1 stale pkgs'));
       // Placeholder partial created since no partial existed and gap-closed pkgs need an anchor.
       expect(safeCreateSpy).toHaveBeenCalledWith(expect.objectContaining({
@@ -9059,6 +9101,254 @@ describe('EcosystemService', () => {
       expect(timings.probeTxEffectsMs).toBeGreaterThanOrEqual(0);
       // Sanity — identityFields wrap also fired.
       expect(timings.probeIdentityFieldsMs).toBeGreaterThanOrEqual(0);
+    });
+
+    it('probeOnePackage on mainnet threads previousModuleStates into countEvents (resume from stored cursor + delta)', async () => {
+      // Carry-forward: the per-tick map carries `(events, eventsCursor)`
+      // for each module; probeOnePackage must look it up and pass it
+      // into countEvents so the GraphQL walk resumes from the prior
+      // cursor instead of paginating from genesis. The returned
+      // ModuleMetrics.eventsCursor is whatever countEvents reports
+      // (the freshest one this tick), and `events` is the new total.
+      const info = {
+        address: '0xcarryforward',
+        storageRebate: '0',
+        modules: { nodes: [{ name: 'mA' }] },
+        previousTransactionBlock: null,
+      };
+      jest.spyOn(service as any, 'fetchEntryFunctions').mockResolvedValue(new Map());
+      const countEventsSpy = jest
+        .spyOn(service as any, 'countEvents')
+        .mockResolvedValue({ count: 1030, cursor: 'cNew', capped: false });
+      jest.spyOn(service as any, 'updateSendersForModule').mockResolvedValue(0);
+      jest
+        .spyOn(service as any, 'probeIdentityFields')
+        .mockResolvedValue({ identifiers: [], objectType: null });
+      jest
+        .spyOn(service as any, 'probeTxEffects')
+        .mockResolvedValue({ identifiers: [], objectType: null });
+      jest
+        .spyOn(service as any, 'updateTxCountForPackage')
+        .mockResolvedValue({ total: 0, capped: false });
+      jest.spyOn(service as any, 'captureObjectTypesForPackage').mockResolvedValue([]);
+
+      const previousModuleStates = new Map<string, { events: number; eventsCursor: string | null }>([
+        ['0xcarryforward::mA', { events: 1000, eventsCursor: 'cOld' }],
+      ]);
+      const fact = await (service as any).probeOnePackage(
+        info,
+        new Map(),
+        new Date(),
+        'mainnet',
+        undefined, // timings
+        previousModuleStates,
+      );
+
+      // countEvents was called with the resume info from the map.
+      expect(countEventsSpy).toHaveBeenCalledWith('0xcarryforward::mA', {
+        prevCount: 1000,
+        prevCursor: 'cOld',
+      });
+      // ModuleMetrics carries the new total + new cursor for next tick.
+      expect(fact.moduleMetrics).toHaveLength(1);
+      expect(fact.moduleMetrics[0].events).toBe(1030);
+      expect(fact.moduleMetrics[0].eventsCursor).toBe('cNew');
+    });
+
+    it('probeOnePackage on mainnet falls back to {0, null} when the module is absent from previousModuleStates (first-time bootstrap)', async () => {
+      // First time we see a module: the map has no entry; countEvents
+      // gets called with prevCount=0, prevCursor=null, walking the
+      // entire history. Same shape as the pre-carry-forward behaviour.
+      const info = {
+        address: '0xboot',
+        storageRebate: '0',
+        modules: { nodes: [{ name: 'newMod' }] },
+        previousTransactionBlock: null,
+      };
+      jest.spyOn(service as any, 'fetchEntryFunctions').mockResolvedValue(new Map());
+      const countEventsSpy = jest
+        .spyOn(service as any, 'countEvents')
+        .mockResolvedValue({ count: 5, cursor: 'cFresh', capped: false });
+      jest.spyOn(service as any, 'updateSendersForModule').mockResolvedValue(0);
+      jest
+        .spyOn(service as any, 'probeIdentityFields')
+        .mockResolvedValue({ identifiers: [], objectType: null });
+      jest
+        .spyOn(service as any, 'probeTxEffects')
+        .mockResolvedValue({ identifiers: [], objectType: null });
+      jest
+        .spyOn(service as any, 'updateTxCountForPackage')
+        .mockResolvedValue({ total: 0, capped: false });
+      jest.spyOn(service as any, 'captureObjectTypesForPackage').mockResolvedValue([]);
+
+      // Empty map → bootstrap path.
+      const fact = await (service as any).probeOnePackage(
+        info,
+        new Map(),
+        new Date(),
+        'mainnet',
+        undefined,
+        new Map(),
+      );
+
+      expect(countEventsSpy).toHaveBeenCalledWith('0xboot::newMod', {
+        prevCount: 0,
+        prevCursor: null,
+      });
+      expect(fact.moduleMetrics[0].events).toBe(5);
+      expect(fact.moduleMetrics[0].eventsCursor).toBe('cFresh');
+    });
+
+    it('probeOnePackage on testnet ignores previousModuleStates entirely (countEvents is skipped, eventsCursor falls back to prior stored value)', async () => {
+      // Testnet skips countEvents — the carry-forward map MUST NOT be
+      // consulted via a countEvents call. But the stored eventsCursor
+      // should still be preserved on the resulting ModuleMetrics so a
+      // future mainnet snapshot of the same address (impossible on
+      // disjoint networks, but the data structure stays consistent)
+      // doesn't accidentally null out the cursor.
+      const info = {
+        address: '0xtestcf',
+        storageRebate: '0',
+        modules: { nodes: [{ name: 'mT' }] },
+        previousTransactionBlock: null,
+      };
+      jest.spyOn(service as any, 'fetchEntryFunctions').mockResolvedValue(new Map());
+      const countEventsSpy = jest.spyOn(service as any, 'countEvents');
+      jest.spyOn(service as any, 'sampleEventTypes').mockResolvedValue([]);
+      jest
+        .spyOn(service as any, 'probeIdentityFields')
+        .mockResolvedValue({ identifiers: [], objectType: null });
+      jest
+        .spyOn(service as any, 'probeTxEffects')
+        .mockResolvedValue({ identifiers: [], objectType: null });
+      jest.spyOn(service as any, 'discoverObjectTypesLite').mockResolvedValue([]);
+
+      const previousModuleStates = new Map<string, { events: number; eventsCursor: string | null }>([
+        ['0xtestcf::mT', { events: 999, eventsCursor: 'cKept' }],
+      ]);
+      const fact = await (service as any).probeOnePackage(
+        info,
+        new Map(),
+        new Date(),
+        'testnet',
+        undefined,
+        previousModuleStates,
+      );
+
+      expect(countEventsSpy).not.toHaveBeenCalled();
+      // events stays 0 (testnet skip), but the prior cursor is preserved
+      // so a future migration / re-classification doesn't erase it.
+      expect(fact.moduleMetrics[0].events).toBe(0);
+      expect(fact.moduleMetrics[0].eventsCursor).toBe('cKept');
+    });
+
+    it('loadPreviousModuleStates aggregates each address’s freshest packagefact and flattens moduleMetrics into the carry-forward map', async () => {
+      // The aggregate returns one row per address (newest by lastProbedAt
+      // via $sort + $group $first). Each row's moduleMetrics list gets
+      // flattened to `${addr}::${mod}` keys with the (events, eventsCursor)
+      // pair. Modules without eventsCursor (legacy facts) get null.
+      const aggSpy = pkgFactModel.aggregate as jest.Mock;
+      aggSpy.mockReturnValue({
+        exec: jest.fn().mockResolvedValue([
+          {
+            _id: '0xaddr1',
+            moduleMetrics: [
+              { module: 'm1', events: 100, eventsCursor: 'c1' },
+              { module: 'm2', events: 0, eventsCursor: null },
+            ],
+          },
+          {
+            _id: '0xaddr2',
+            moduleMetrics: [{ module: 'mX', events: 7, eventsCursor: 'cX' }],
+          },
+          // Legacy fact predating the eventsCursor field: $first might
+          // return moduleMetrics where `eventsCursor` is undefined. The
+          // helper must coerce to null, not throw.
+          {
+            _id: '0xaddr3',
+            moduleMetrics: [{ module: 'mLegacy', events: 50 } as any],
+          },
+          // Defensive: row with moduleMetrics missing entirely (shouldn't
+          // happen given the schema's default:[] but guards against
+          // older docs that predate the field). The `?? []` fallback
+          // must produce an empty iteration without throwing.
+          { _id: '0xaddrNoModules' } as any,
+        ]),
+      });
+
+      const map = await (service as any).loadPreviousModuleStates('mainnet');
+
+      // Aggregation pipeline shape — pinned so a future "let's swap to
+      // findOne per address" change has to update this test.
+      expect(aggSpy).toHaveBeenCalledWith([
+        { $match: { network: 'mainnet' } },
+        { $sort: { address: 1, lastProbedAt: -1 } },
+        { $group: { _id: '$address', moduleMetrics: { $first: '$moduleMetrics' } } },
+      ]);
+
+      expect(map.size).toBe(4);
+      expect(map.get('0xaddr1::m1')).toEqual({ events: 100, eventsCursor: 'c1' });
+      expect(map.get('0xaddr1::m2')).toEqual({ events: 0, eventsCursor: null });
+      expect(map.get('0xaddr2::mX')).toEqual({ events: 7, eventsCursor: 'cX' });
+      // Legacy fact: missing eventsCursor coerced to null.
+      expect(map.get('0xaddr3::mLegacy')).toEqual({ events: 50, eventsCursor: null });
+    });
+
+    it('probeOnePackage on mainnet preserves a stored cursor across a dormant tick (prev exists, events=0, countEvents returns 0 delta)', async () => {
+      // The free_nft case: 1.48M events all from Feb-Mar, then silence.
+      // Subsequent ticks should pass {prevCount: 1.48M, prevCursor: cMar15}
+      // and countEvents returns {count: 1.48M, cursor: cMar15, capped: false}
+      // — a single GraphQL call that returns 0 new nodes, no advance.
+      // This pins the prev?.events ?? 0 / prev?.eventsCursor ?? null
+      // branches with prev present.
+      const info = {
+        address: '0xdormant',
+        storageRebate: '0',
+        modules: { nodes: [{ name: 'free_nft' }] },
+        previousTransactionBlock: null,
+      };
+      jest.spyOn(service as any, 'fetchEntryFunctions').mockResolvedValue(new Map());
+      const countEventsSpy = jest
+        .spyOn(service as any, 'countEvents')
+        .mockResolvedValue({ count: 1_484_566, cursor: 'cMar15', capped: false });
+      jest.spyOn(service as any, 'updateSendersForModule').mockResolvedValue(0);
+      jest
+        .spyOn(service as any, 'probeIdentityFields')
+        .mockResolvedValue({ identifiers: [], objectType: null });
+      jest
+        .spyOn(service as any, 'probeTxEffects')
+        .mockResolvedValue({ identifiers: [], objectType: null });
+      jest
+        .spyOn(service as any, 'updateTxCountForPackage')
+        .mockResolvedValue({ total: 0, capped: false });
+      jest.spyOn(service as any, 'captureObjectTypesForPackage').mockResolvedValue([]);
+
+      const previousModuleStates = new Map<string, { events: number; eventsCursor: string | null }>([
+        ['0xdormant::free_nft', { events: 1_484_566, eventsCursor: 'cMar15' }],
+      ]);
+      const fact = await (service as any).probeOnePackage(
+        info,
+        new Map(),
+        new Date(),
+        'mainnet',
+        undefined,
+        previousModuleStates,
+      );
+
+      expect(countEventsSpy).toHaveBeenCalledWith('0xdormant::free_nft', {
+        prevCount: 1_484_566,
+        prevCursor: 'cMar15',
+      });
+      // count and cursor preserved — same as last tick.
+      expect(fact.moduleMetrics[0].events).toBe(1_484_566);
+      expect(fact.moduleMetrics[0].eventsCursor).toBe('cMar15');
+    });
+
+    it('loadPreviousModuleStates returns an empty map when no packagefacts exist (first-ever tick / post-wipe)', async () => {
+      const aggSpy = pkgFactModel.aggregate as jest.Mock;
+      aggSpy.mockReturnValue({ exec: jest.fn().mockResolvedValue([]) });
+      const map = await (service as any).loadPreviousModuleStates('mainnet');
+      expect(map.size).toBe(0);
     });
 
     it('captureTestnetTick skips with "cross-process lock held" when acquire returns acquired:false', async () => {

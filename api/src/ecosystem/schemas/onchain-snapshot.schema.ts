@@ -41,6 +41,23 @@ export class ModuleMetrics {
   @Prop({ required: true, default: false }) eventsCapped: boolean;
 
   /**
+   * GraphQL `endCursor` of the newest event we've counted for this
+   * (package, module). On the next tick, `countEvents` resumes from
+   * `events(filter: ..., first: 50, after: <eventsCursor>)` and walks
+   * forward — counting only the delta since the previous tick instead
+   * of re-paginating the entire history every 2h. `null` when:
+   *   - the module has never been seen (first-time bootstrap will
+   *     walk from genesis and populate it),
+   *   - the module has emitted zero events ever (no cursor exists),
+   *   - the previous tick errored before pagination produced a cursor.
+   * Append-only events on a finalized chain mean a stored cursor is
+   * always safe to resume from — old events never disappear, never
+   * change order, never re-cursor. See `plans/limits.md` § Events
+   * pagination for the empirical probe.
+   */
+  @Prop({ type: String, default: null }) eventsCursor: string | null;
+
+  /**
    * Unique sender addresses seen across this (package, module). Derived at
    * capture time from the maintained `ProjectSenders` collection; stored
    * here for point-in-time delta queries without needing to rehydrate

@@ -1988,9 +1988,40 @@ export class EcosystemService implements OnModuleInit, OnApplicationShutdown {
     return Array.from(found);
   }
 
-  private async countEvents(emittingModule: string, maxPages = 50000): Promise<{ count: number; capped: boolean }> {
-    let total = 0;
-    let cursor: string | null = null;
+  /**
+   * Count events for a module via GraphQL pagination. Supports
+   * **carry-forward + delta**: pass `prevCount` + `prevCursor` from a
+   * previous tick to resume counting only events newer than that cursor;
+   * the returned `count` is the new running total (`prevCount + delta`)
+   * and the returned `cursor` points to the newest event seen so far.
+   *
+   * First-time / bootstrap path: omit `prevCursor` (or pass `null`), and
+   * the walk starts from genesis as before. The returned cursor is then
+   * stored on the `ModuleMetrics` record so the next tick takes the
+   * delta-only path.
+   *
+   * `cursor` semantics:
+   *   - returned cursor is `pageInfo.endCursor` of the last non-empty
+   *     page seen this run, falling back to `prevCursor` if zero new
+   *     events arrived (the resume point doesn't move).
+   *   - `null` only if the module has never had any events AND we have
+   *     no prior cursor — i.e. nothing to resume from yet.
+   *
+   * Append-only events on a finalized chain make this safe: stored
+   * cursors stay valid across days/weeks; old events never disappear,
+   * never re-order. See `plans/limits.md` § Events pagination for
+   * the empirical probe that proved cursor continuity.
+   */
+  private async countEvents(
+    emittingModule: string,
+    opts: { prevCount?: number; prevCursor?: string | null; maxPages?: number } = {},
+  ): Promise<{ count: number; cursor: string | null; capped: boolean }> {
+    const prevCount = opts.prevCount ?? 0;
+    const prevCursor = opts.prevCursor ?? null;
+    const maxPages = opts.maxPages ?? 50000;
+    let pageCount = 0;
+    let total = prevCount;
+    let cursor: string | null = prevCursor;
 
     for (let i = 0; i < maxPages; i++) {
       const afterClause: string = cursor ? `, after: "${cursor}"` : '';
@@ -2002,13 +2033,20 @@ export class EcosystemService implements OnModuleInit, OnApplicationShutdown {
           }
         }`);
         total += data.events.nodes.length;
-        if (!data.events.pageInfo.hasNextPage) return { count: total, capped: false };
-        cursor = data.events.pageInfo.endCursor;
+        pageCount += data.events.nodes.length;
+        if (data.events.pageInfo.endCursor) {
+          // Advance the resume cursor to the newest event we just saw.
+          // When zero new events arrive (delta tick on a dormant module),
+          // endCursor is null — keep `cursor` at its prior value so the
+          // next tick still resumes from the right point.
+          cursor = data.events.pageInfo.endCursor;
+        }
+        if (!data.events.pageInfo.hasNextPage) return { count: total, cursor, capped: false };
       } catch {
         break;
       }
     }
-    return { count: total, capped: total >= maxPages * 50 };
+    return { count: total, cursor, capped: pageCount >= maxPages * 50 };
   }
 
   /**
@@ -3479,6 +3517,15 @@ export class EcosystemService implements OnModuleInit, OnApplicationShutdown {
     // runGapClosing so a slow tick (snap 42/54: probePaginatorMs at 63min
     // vs 44min baseline) decomposes into which sub-probe spiked.
     const subProbeTimings = EcosystemService.newSubProbeTimings();
+    // Carry-forward map for `countEvents`. Build once per tick from the
+    // freshest packagefacts on this network, then thread into every
+    // `probeOnePackage` call (both the paginator and gap-closing) so
+    // each module's countEvents resumes from its stored cursor instead
+    // of paginating the full event history. First-time / bootstrap
+    // tick: empty map, captureRaw walks every module from genesis, the
+    // result populates eventsCursor on every fact for next tick to
+    // consume. See `plans/limits.md` § Events pagination.
+    const previousModuleStates = await this.loadPreviousModuleStates('mainnet');
     const tProbe = Date.now();
     const {
       probed: freshlyProbed,
@@ -3495,6 +3542,7 @@ export class EcosystemService implements OnModuleInit, OnApplicationShutdown {
       onCheckpoint,
       checkpointEveryN: EcosystemService.MAINNET_CHECKPOINT_EVERY_N,
       subProbeTimings,
+      previousModuleStates,
     });
     const probePaginatorMs = Date.now() - tProbe;
 
@@ -3524,7 +3572,14 @@ export class EcosystemService implements OnModuleInit, OnApplicationShutdown {
     let gapClosingMs = 0;
     if (wrapped && Date.now() < deadlineMs) {
       const tGap = Date.now();
-      const gc = await this.runGapClosing('mainnet', new Date(), deadlineMs, displayByPackage, subProbeTimings);
+      const gc = await this.runGapClosing(
+        'mainnet',
+        new Date(),
+        deadlineMs,
+        displayByPackage,
+        subProbeTimings,
+        previousModuleStates,
+      );
       gapClosingMs = Date.now() - tGap;
       gapClosed = gc.probed;
       if (gapClosed.length > 0) {
@@ -3686,6 +3741,46 @@ export class EcosystemService implements OnModuleInit, OnApplicationShutdown {
    *   - Multiple partials (shouldn't happen under the capture lock) → take
    *     the newest, log a warn, delete the older ones.
    */
+  /**
+   * Build the per-module carry-forward map for `countEvents` —
+   * `${address}::${module} → { events, eventsCursor }` keyed off each
+   * module's most recent stored fact. One aggregate over `packagefacts`
+   * per tick: $sort by lastProbedAt desc → $group by address keeping
+   * first → unwind moduleMetrics → project the (events, eventsCursor)
+   * pair we need.
+   *
+   * Empty map on first-ever tick (or post-DB-wipe) — every module then
+   * bootstraps via a full event walk and populates its cursor. From
+   * tick 2 onward, every entry resumes via `after: <cursor>` and walks
+   * only the 2h delta.
+   */
+  private async loadPreviousModuleStates(
+    network: 'mainnet' | 'testnet' | 'devnet',
+  ): Promise<Map<string, { events: number; eventsCursor: string | null }>> {
+    const rows = (await this.pkgFactModel
+      .aggregate([
+        { $match: { network } },
+        { $sort: { address: 1, lastProbedAt: -1 } },
+        {
+          $group: {
+            _id: '$address',
+            moduleMetrics: { $first: '$moduleMetrics' },
+          },
+        },
+      ])
+      .exec()) as Array<{ _id: string; moduleMetrics: ModuleMetrics[] }>;
+    const map = new Map<string, { events: number; eventsCursor: string | null }>();
+    for (const row of rows) {
+      for (const mm of row.moduleMetrics ?? []) {
+        map.set(`${row._id}::${mm.module}`, {
+          events: mm.events ?? 0,
+          eventsCursor: mm.eventsCursor ?? null,
+        });
+      }
+    }
+    return map;
+  }
+
   private async detectMainnetResume(): Promise<{
     resumeCursor: string | null;
     carriedForward: PackageFact[];
@@ -4764,6 +4859,14 @@ export class EcosystemService implements OnModuleInit, OnApplicationShutdown {
     now: Date = new Date(),
     network: 'mainnet' | 'testnet' | 'devnet' = 'mainnet',
     timings?: SubProbeTimings,
+    /**
+     * Map keyed by `${pkgAddress}::${moduleName}` carrying the previous
+     * tick's `(events, eventsCursor)` for each module — feeds the
+     * carry-forward + delta path inside `countEvents`. Mainnet only;
+     * testnet skips countEvents entirely so the map is unused there.
+     * Empty / missing entry on a module → first-time bootstrap walk.
+     */
+    previousModuleStates?: Map<string, { events: number; eventsCursor: string | null }>,
   ): Promise<PackageFact> {
     const deployer = pkg.previousTransactionBlock?.sender?.address?.toLowerCase() ?? null;
     const modules = (pkg.modules?.nodes || []).map((m) => m.name);
@@ -4841,14 +4944,25 @@ export class EcosystemService implements OnModuleInit, OnApplicationShutdown {
       const emittingModule = `${pkg.address}::${mod}`;
       let events = 0;
       let eventsCapped = false;
+      // `eventsCursor` survives across ticks: prefer the freshly-returned
+      // one from this tick's countEvents call; fall back to the prior
+      // tick's stored cursor when the call is skipped (testnet) or
+      // returns nothing new — never silently null out a cursor we
+      // already have, that'd force a full bootstrap walk next tick.
+      const prev = previousModuleStates?.get(emittingModule);
+      let eventsCursor: string | null = prev?.eventsCursor ?? null;
       if (!isTestnet) {
         const tCount = Date.now();
-        const counted = await this.countEvents(emittingModule);
+        const counted = await this.countEvents(emittingModule, {
+          prevCount: prev?.events ?? 0,
+          prevCursor: prev?.eventsCursor ?? null,
+        });
         const dt = Date.now() - tCount;
         if (timings) timings.countEventsMs += dt;
         countEventsForThisPackageMs += dt;
         events = counted.count;
         eventsCapped = counted.capped;
+        eventsCursor = counted.cursor;
       }
       let uniqueSenders = 0;
       if (!isTestnet) {
@@ -4869,6 +4983,7 @@ export class EcosystemService implements OnModuleInit, OnApplicationShutdown {
         module: mod,
         events,
         eventsCapped,
+        eventsCursor,
         uniqueSenders,
         entryFunctions: entryFunctionsByModule.get(mod) ?? [],
         eventTypes,
@@ -5065,6 +5180,15 @@ export class EcosystemService implements OnModuleInit, OnApplicationShutdown {
      * `captureObjectTypesForPackage`, etc.) was the actual culprit.
      */
     subProbeTimings?: SubProbeTimings;
+    /**
+     * Optional carry-forward map for `countEvents`. Keyed by
+     * `${pkgAddress}::${moduleName}`; values are the previous tick's
+     * `(events, eventsCursor)` per module. Threaded into each
+     * `probeOnePackage` so its `countEvents` call resumes from the
+     * stored cursor instead of paginating from genesis. Empty / missing
+     * entry → first-time bootstrap walk.
+     */
+    previousModuleStates?: Map<string, { events: number; eventsCursor: string | null }>;
   }): Promise<{
     probed: PackageFact[];
     nextCursor: string | null;
@@ -5083,6 +5207,7 @@ export class EcosystemService implements OnModuleInit, OnApplicationShutdown {
       onCheckpoint,
       checkpointEveryN,
       subProbeTimings,
+      previousModuleStates,
     } = opts;
     const probed: PackageFact[] = [];
     const failedPackages: { address: string; error: string }[] = [];
@@ -5118,7 +5243,14 @@ export class EcosystemService implements OnModuleInit, OnApplicationShutdown {
             continue;
           }
           try {
-            const fact = await this.probeOnePackage(info, displayByPackage, now, network, subProbeTimings);
+            const fact = await this.probeOnePackage(
+              info,
+              displayByPackage,
+              now,
+              network,
+              subProbeTimings,
+              previousModuleStates,
+            );
             probed.push(fact);
           } catch (e) {
             const err = e as Error;
@@ -5216,6 +5348,7 @@ export class EcosystemService implements OnModuleInit, OnApplicationShutdown {
     deadlineMs: number,
     displayByPackage: Map<string, Array<{ key: string; value: string }>>,
     subProbeTimings?: SubProbeTimings,
+    previousModuleStates?: Map<string, { events: number; eventsCursor: string | null }>,
   ): Promise<{ probed: PackageFact[]; exhaustedCandidates: boolean; deadlineHit: boolean }> {
     const probed: PackageFact[] = [];
     if (Date.now() >= deadlineMs) {
@@ -5251,7 +5384,14 @@ export class EcosystemService implements OnModuleInit, OnApplicationShutdown {
           // handle gracefully) — skip without failing the whole pass.
           continue;
         }
-        const fact = await this.probeOnePackage(info, displayByPackage, now, network, subProbeTimings);
+        const fact = await this.probeOnePackage(
+          info,
+          displayByPackage,
+          now,
+          network,
+          subProbeTimings,
+          previousModuleStates,
+        );
         probed.push(fact);
       } catch (e) {
         this.logger.warn(
