@@ -367,6 +367,16 @@ interface SubProbeTimings {
   updateTxCountForPackageMs: number;
   objectTypesMs: number;
   totalPackages: number;
+  /**
+   * Per-package `countEvents` wall-clock samples — one entry per probed
+   * package's *summed* countEvents time (across all its modules). Used by
+   * `capture()` to emit a distribution log line (median / p99 / max /
+   * top-N) so a slow tick can be diagnosed: hypothesis 1 (one heavy
+   * package) → fat tail; hypothesis 2 (endpoint-wide slowdown) → median
+   * jumps proportionally with max. Empty on testnet (countEvents is
+   * skipped there).
+   */
+  countEventsPerPackage: Array<{ address: string; ms: number }>;
 }
 
 @Injectable()
@@ -1479,6 +1489,30 @@ export class EcosystemService implements OnModuleInit, OnApplicationShutdown {
           `updateTxCountForPackage=${sec(sp.updateTxCountForPackageMs)} ` +
           `objectTypes=${sec(sp.objectTypesMs)}`,
       );
+
+      // Per-package countEvents distribution. countEvents is the dominant
+      // mainnet sub-probe (~88% of probePaginator time), and we want to
+      // know whether occasional 18-min spikes are caused by a fat tail
+      // (one heavy package that paginated more event pages) or an
+      // endpoint-wide slowdown (median crawls up). Reading: stable median
+      // + jumped max → fat tail (look at the top-N addresses); jumped
+      // median + proportional max → endpoint variance.
+      const cep = sp.countEventsPerPackage;
+      if (cep.length > 0) {
+        const sorted = [...cep].sort((a, b) => a.ms - b.ms);
+        const median = sorted[Math.floor(sorted.length / 2)].ms;
+        const p99 = sorted[Math.floor(sorted.length * 0.99)].ms;
+        const max = sorted[sorted.length - 1].ms;
+        const top5 = [...cep]
+          .sort((a, b) => b.ms - a.ms)
+          .slice(0, 5)
+          .map((e) => `${e.address}:${e.ms}ms`)
+          .join(' ');
+        this.logger.log(
+          `Mainnet countEvents distribution: ` +
+            `median=${median}ms p99=${p99}ms max=${max}ms top5=${top5}`,
+        );
+      }
 
       const durationMin = Math.round(durationMs / 60000);
       const summary =
@@ -4708,6 +4742,7 @@ export class EcosystemService implements OnModuleInit, OnApplicationShutdown {
       updateTxCountForPackageMs: 0,
       objectTypesMs: 0,
       totalPackages: 0,
+      countEventsPerPackage: [],
     };
   }
 
@@ -4797,6 +4832,11 @@ export class EcosystemService implements OnModuleInit, OnApplicationShutdown {
     const entryFunctionsByModule = await this.fetchEntryFunctions(pkg.address);
     if (timings) timings.fetchEntryFunctionsMs += Date.now() - tEntry;
     const moduleMetrics: ModuleMetrics[] = [];
+    // Per-package countEvents total (summed across this package's modules).
+    // Captured on the mainnet path only — testnet skips countEvents — and
+    // pushed into `timings.countEventsPerPackage` so `capture()` can emit
+    // a distribution summary across the tick.
+    let countEventsForThisPackageMs = 0;
     for (const mod of modules) {
       const emittingModule = `${pkg.address}::${mod}`;
       let events = 0;
@@ -4804,7 +4844,9 @@ export class EcosystemService implements OnModuleInit, OnApplicationShutdown {
       if (!isTestnet) {
         const tCount = Date.now();
         const counted = await this.countEvents(emittingModule);
-        if (timings) timings.countEventsMs += Date.now() - tCount;
+        const dt = Date.now() - tCount;
+        if (timings) timings.countEventsMs += dt;
+        countEventsForThisPackageMs += dt;
         events = counted.count;
         eventsCapped = counted.capped;
       }
@@ -4831,6 +4873,13 @@ export class EcosystemService implements OnModuleInit, OnApplicationShutdown {
         entryFunctions: entryFunctionsByModule.get(mod) ?? [],
         eventTypes,
       });
+    }
+    // Record per-package countEvents total (mainnet only — testnet stays
+    // empty because countEvents is skipped). Pushed once per package, not
+    // per module, so the array length tracks `totalPackages` for the
+    // distribution math in `capture()`.
+    if (timings && !isTestnet) {
+      timings.countEventsPerPackage.push({ address: pkg.address, ms: countEventsForThisPackageMs });
     }
 
     const tIdent = Date.now();
