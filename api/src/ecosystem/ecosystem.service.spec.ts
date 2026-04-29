@@ -5383,20 +5383,22 @@ describe('EcosystemService', () => {
       expect(exact.tvl).toBeNull();
     });
 
-    it('leaves L1 tvl null and skips L2 add when DefiLlama response omits chainTvls entirely', async () => {
+    it('leaves L1 tvl null and adds L2 with tvl 0 when DefiLlama response omits chainTvls entirely', async () => {
       (global as any).fetch = scriptFetch({
         packages: [pkg({ address: '0xaa', modules: ['foo', 'bar'] })],
         llama: [
           // L1 name-match protocol on IOTA (passes the chain filter) but with no chainTvls object at all
           { name: 'Exact Protocol', tvl: 50_000, chains: ['IOTA'] },
-          // L2 candidate with no chainTvls object at all — must be dropped by the floor
+          // L2 candidate with no chainTvls — surfaces with `tvl: 0` and the cross-chain total preserved as `tvlTotal`.
           { name: 'NoSliceDex', tvl: 1_000_000, chains: ['IOTA EVM'], category: 'Dexs', slug: 'noslicedex' },
         ],
       });
       const snap = await runCapture();
       const exact = snap.l1.find((p: any) => p.name === 'Exact');
       expect(exact.tvl).toBeNull();
-      expect(snap.l2.map((p: any) => p.name)).not.toContain('NoSliceDex');
+      const noSlice = snap.l2.find((p: any) => p.name === 'NoSliceDex');
+      expect(noSlice.tvl).toBe(0);
+      expect(noSlice.tvlTotal).toBe(1_000_000);
     });
 
     it('adds L2 EVM protocols not already present in L1 — uses IOTA EVM slice only', async () => {
@@ -5424,9 +5426,11 @@ describe('EcosystemService', () => {
       expect(l2.categoryLabel).toBe('DeFi / DEX');
       expect(l2.urls[0]).toEqual({ label: 'Website', href: 'https://l2dex.example' });
       expect(l2.tvl).toBe(5_000);
+      // The cross-chain total surfaces separately as tvlTotal so the UI can render the IOTA-EVM share.
+      expect(l2.tvlTotal).toBe(50_000);
     });
 
-    it('skips L2 protocols whose IOTA EVM slice is below the $100 floor (even if cross-chain total is huge)', async () => {
+    it('keeps dust-tier L2 protocols and exposes the cross-chain total as tvlTotal so the UI can render the share', async () => {
       (global as any).fetch = scriptFetch({
         packages: [pkg({ address: '0xaa', modules: ['foo', 'bar'] })],
         llama: [
@@ -5434,7 +5438,10 @@ describe('EcosystemService', () => {
         ],
       });
       const snap = await runCapture();
-      expect(snap.l2.map((p: any) => p.name)).not.toContain('DustyDex');
+      const dusty = snap.l2.find((p: any) => p.name === 'DustyDex');
+      expect(dusty).toBeDefined();
+      expect(dusty.tvl).toBe(50);
+      expect(dusty.tvlTotal).toBe(1_000_000);
     });
 
     it('skips L1-only protocols already present in L1', async () => {

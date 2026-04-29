@@ -262,6 +262,8 @@ export interface Project {
   tvlShared: number | null;
   /** Name of the primary project this row shares its DefiLlama TVL with — used for the "shared with <primary>" tooltip. `null` when `tvlShared` is null. */
   tvlSharedWith: string | null;
+  /** Cross-chain protocol total from DefiLlama (`proto.tvl`). Set on L2 rows so the UI can render the IOTA-EVM slice next to the protocol's full footprint and a share %. `null` for L1 projects (where `tvl` already represents the protocol's full IOTA presence). */
+  tvlTotal?: number | null;
   /** True for dumb PFP / collectible NFT projects (no utility, no RWA). Drives the "Hide collectibles" filter on the dashboard — RWA / utility NFTs stay `false`. */
   isCollectible: boolean;
   /** Resolved square icon URL. Precedence: `ProjectDefinition.logo` → `Team.logo` → `null` (frontend falls back to initials). Used on list rows, team cards, and other small renders. */
@@ -4618,8 +4620,6 @@ export class EcosystemService implements OnModuleInit, OnApplicationShutdown {
         if (existingNames.has(proto.name.toLowerCase())) continue;
         // Only count the IOTA EVM slice, not the protocol's cross-chain total
         const chainTvl = proto.chainTvls?.['IOTA EVM'] ?? 0;
-        // Skip protocols where the IOTA EVM slice is below the $100 floor
-        if (chainTvl < 100) continue;
 
         const llamaSlug = (proto.slug || proto.name).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
         const l2Team = getTeam(L2_TEAM_MAP[proto.name.toLowerCase()]) ?? null;
@@ -4646,6 +4646,7 @@ export class EcosystemService implements OnModuleInit, OnApplicationShutdown {
           tvl: chainTvl,
           tvlShared: null,
           tvlSharedWith: null,
+          tvlTotal: typeof proto.tvl === 'number' ? proto.tvl : null,
           isCollectible: false,
           logo: l2Team?.logo ?? null,
           logoWordmark: l2Team?.logoWordmark ?? null,
