@@ -20,6 +20,7 @@ import { Team } from '../team.interface';
 export const lostCrusader: Team = {
   id: 'lost-crusader',
   name: 'Lost Crusader',
+  logo: '/logos/lost-crusader.jpg',
   description: 'Browser-based MMO of "conflict and faith" (studio name not published). Roadmap: Q4 2025 Build Phase → Q1 2026 Grant Phase (IOTA mainnet integration) → Q2 2026 Alpha Launch (Season 0 + Android soft-launch) → Q3 2026 NFT Collection + brand partnership. In-game daily-claim event "Arcane Rush" issues `ArcaneDust` soulbound tokens as proof-of-daily-participation. Sibling `ReviveSpell` + "Golden Arcane Dust" ship from a second deployer for higher-tier / revive-mechanic items.',
   urls: [
     { label: 'Lost Crusader gateway', href: 'https://lostcrusader.xyz' },
