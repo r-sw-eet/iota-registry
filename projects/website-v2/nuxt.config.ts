@@ -32,13 +32,13 @@ export default defineNuxtConfig({
         { property: 'og:title', content: 'IOTA Registry — Projects & Teams' },
         { property: 'og:description', content: 'Honest registry of IOTA Rebased L1 projects, teams, and announcements. Actual on-chain numbers, not curated press releases.' },
         { property: 'og:url', content: 'https://iota-registry.org/' },
-        { property: 'og:image', content: 'https://iota-registry.org/images/its-network_1.png' },
-        { property: 'og:image:width', content: '1440' },
-        { property: 'og:image:height', content: '1100' },
+        { property: 'og:image', content: 'https://iota-registry.org/images/site-og.png' },
+        { property: 'og:image:width', content: '1200' },
+        { property: 'og:image:height', content: '630' },
         { name: 'twitter:card', content: 'summary_large_image' },
         { name: 'twitter:title', content: 'IOTA Registry — Projects & Teams' },
         { name: 'twitter:description', content: 'Honest registry of IOTA Rebased L1 projects, teams, and announcements.' },
-        { name: 'twitter:image', content: 'https://iota-registry.org/images/its-network_1.png' },
+        { name: 'twitter:image', content: 'https://iota-registry.org/images/site-og.png' },
       ],
       script: plausibleEnabled
         ? [

@@ -28,7 +28,7 @@ const { BLOG_POSTS } = await jiti.import(join(ROOT, 'data/blog.ts'))
 const template = readFileSync(join(OUT, '200.html'), 'utf8')
 
 function ogImageFor(post) {
-  const fallback = '/images/its-network_1.png'
+  const fallback = '/images/site-og.png'
   const src = post.previewImage || fallback
   const og = src.replace(/\.(png|jpg|jpeg|webp)$/i, '-og.$1')
   const onDisk = join(OUT, og.replace(/^\//, ''))
