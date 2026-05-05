@@ -32,16 +32,5 @@ services:
       mongodb:
         condition: service_healthy
 
-  website:
-    build:
-      context: ./website
-    container_name: scanner-website
-    ports:
-      - "3000:3000"
-    environment:
-      NUXT_PUBLIC_API_BASE: http://localhost:3004/api/v1
-    depends_on:
-      - api
-
 volumes:
   scanner-mongodb-data:

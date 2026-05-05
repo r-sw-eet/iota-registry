@@ -1,13 +1,15 @@
-# IOTA Trade Scanner
+# IOTA Registry
 
-**🌐 Live dashboard: [iota-trade-scanner.net](https://iota-trade-scanner.net)**
+**🌐 Live dashboard: [iota-registry.org](https://iota-registry.org)**
 
-[![CI](https://github.com/r-sw-eet/iota-trade-scanner/actions/workflows/ci.yml/badge.svg)](https://github.com/r-sw-eet/iota-trade-scanner/actions/workflows/ci.yml)
-[![codecov](https://codecov.io/gh/r-sw-eet/iota-trade-scanner/graph/badge.svg)](https://codecov.io/gh/r-sw-eet/iota-trade-scanner)
+[![CI](https://github.com/r-sw-eet/iota-registry/actions/workflows/ci.yml/badge.svg)](https://github.com/r-sw-eet/iota-registry/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/r-sw-eet/iota-registry/graph/badge.svg)](https://codecov.io/gh/r-sw-eet/iota-registry)
 
 On-chain data analytics dashboard for the IOTA mainnet. Tracks real network activity and monitors 40+ ecosystem projects.
 
-> ⚠️ **Work in progress** — this project is under active development. Data may contain errors and breaking changes can happen at any time. If you're a developer and specifics about your team, project, or dApp are missing, please contact [hello@iota-trade-scanner.net](mailto:hello@iota-trade-scanner.net).
+> Formerly **IOTA Trade Scanner** at `iota-trade-scanner.net`; rebranded 2026-05-05 alongside the v2 launch. The legacy domain now 301-redirects here. Codebase still lives under the `iota-trade-scanner` directory name on disk; rename pending (tracked in `plans/v2-todo.md`).
+
+> ⚠️ **Work in progress** — this project is under active development. Data may contain errors and breaking changes can happen at any time. If you're a developer and specifics about your team, project, or dApp are missing, please contact [hello@iota-registry.org](mailto:hello@iota-registry.org).
 
 ## Features
 
@@ -26,7 +28,6 @@ On-chain data analytics dashboard for the IOTA mainnet. Tracks real network acti
 |-----------|--------------------------------------|
 | API       | NestJS 11, TypeScript, Mongoose      |
 | Database  | MongoDB 7                            |
-| Website   | Nuxt 3 (SPA), Tailwind CSS, Chart.js |
 | Infra     | Docker Compose, Node.js 22           |
 
 ## Architecture
@@ -40,11 +41,10 @@ How the scanner maps on-chain Move artefacts to projects it tracks: our registry
 ## Quick Start
 
 ```bash
-# Start everything (MongoDB + API + Website)
+# Start everything (MongoDB + API)
 make local
 
 # API:     http://localhost:3004/api/v1/health
-# Website: http://localhost:3000
 ```
 
 ## Development
@@ -103,13 +103,10 @@ iota-trade-scanner/
 │   │   │   └── projects/   # 40+ project definitions (DeFi, Trade, NFT, ...)
 │   │   └── iota/           # IOTA RPC/GraphQL client
 │   └── Dockerfile
-├── website/                # Nuxt 3 frontend (SPA)
-│   ├── pages/
-│   │   ├── index.vue       # Main dashboard
-│   │   └── project/[slug].vue  # Project detail page
-│   ├── components/         # MetricCard, EpochCharts, ProjectLogo
-│   ├── composables/        # useApi, useIota
-│   └── Dockerfile
+├── projects/
+│   ├── website-v1/         # Legacy Nuxt 3 SPA (retired 2026-05-05; archived, not built/deployed)
+│   ├── website-v2/         # Active Nuxt 3 SPA — served at iota-registry.org as a static build
+│   └── website-v2-teaser/  # Pre-launch teaser site (retired 2026-05-05; archived)
 ├── docker-compose.yml
 ├── Makefile
 └── TODO.md
@@ -119,13 +116,12 @@ iota-trade-scanner/
 
 | Target           | Description                                 |
 |------------------|---------------------------------------------|
-| `make local`     | Full Docker stack (MongoDB + API + Website) |
+| `make local`     | Full Docker stack (MongoDB + API)           |
 | `make dev-api`   | NestJS watch mode (requires Docker MongoDB) |
-| `make dev-web`   | Nuxt dev server                             |
-| `make build`     | Build both API and website                  |
+| `make build`     | Build the API                               |
 | `make image`     | Build Docker image for API                  |
 | `make lint`      | ESLint on API source                        |
 | `make typecheck` | TypeScript check                            |
 | `make ready`     | Lint + typecheck                            |
 | `make down`      | Docker compose down with volumes            |
-| `make clean`     | Remove dist/node_modules/.nuxt/.output      |
+| `make clean`     | Remove api dist/node_modules/coverage       |

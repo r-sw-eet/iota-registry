@@ -40,53 +40,8 @@ jobs:
           # ratchet; Codecov is just for the web UI.
           fail_ci_if_error: false
 
-  web-test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: npm
-          cache-dependency-path: website/package-lock.json
-      - run: npm ci
-        working-directory: website
-      - run: npm run test:unit:coverage
-        working-directory: website
-      - name: Enforce coverage baseline (no regression)
-        run: npm run cov:check
-        working-directory: website
-      - name: Upload web coverage to Codecov
-        uses: codecov/codecov-action@v5
-        with:
-          files: ./website/coverage/lcov.info
-          flags: web
-          token: ${{ secrets.CODECOV_TOKEN }}
-          # Coverage upload is nice-to-have telemetry, not a merge gate.
-          # Codecov's CDN has served mismatched binary/SHA256SUM pairs multiple
-          # times this week, killing deploys with a SHASUM / GPG BAD-signature
-          # error. The local `cov:check` step above is the real coverage
-          # ratchet; Codecov is just for the web UI.
-          fail_ci_if_error: false
-
-  web-e2e:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: npm
-          cache-dependency-path: website/package-lock.json
-      - run: npm ci
-        working-directory: website
-      - run: npx playwright install --with-deps chromium
-        working-directory: website
-      - run: npm run test:e2e
-        working-directory: website
-
   deploy:
-    needs: [api-test, web-test, web-e2e]
+    needs: [api-test]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     # Serialize deploys — parallel main pushes (or fast-follow commits) can't
     # race on the SSH deploy step. Pair with the flock inside scripts/deploy.sh
@@ -97,7 +52,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       # Deploy to both hosts; the deploy script adapts based on the compose
-      # services defined on each host (web → api+website, scanner → api only).
+      # services defined on each host (web → mongo+api, scanner → api only).
       # fail-fast: false so a flaky host doesn't skip the other.
       fail-fast: false
       matrix:

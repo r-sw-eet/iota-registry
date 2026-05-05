@@ -1,4 +1,4 @@
-.PHONY: dev dev-api dev-web build build-api build-web image local down clean hooks seed seed-full
+.PHONY: dev dev-api build build-api image local down clean hooks seed seed-full
 
 # --- Setup ---
 
@@ -14,13 +14,9 @@ local:
 	@echo "Waiting for MongoDB..."
 	@until docker exec scanner-mongodb mongosh --quiet --eval "db.adminCommand('ping')" >/dev/null 2>&1; do sleep 1; done
 	@echo "Scanner API running at http://localhost:3004/api/v1/health"
-	@echo "Scanner website running at http://localhost:3000"
 
 dev-api:
 	cd api && npx nest start --watch
-
-dev-web:
-	cd website && npx nuxt dev
 
 down:
 	docker compose down -v
@@ -43,10 +39,7 @@ seed-full:
 build-api:
 	cd api && npx nest build
 
-build-web:
-	cd website && npx nuxt build
-
-build: build-api build-web
+build: build-api
 
 image:
 	docker build -t iota-trade-scanner:latest ./api
@@ -64,4 +57,4 @@ ready: lint typecheck
 # --- Cleanup ---
 
 clean:
-	rm -rf api/dist api/node_modules api/coverage website/.nuxt website/.output website/node_modules
+	rm -rf api/dist api/node_modules api/coverage
