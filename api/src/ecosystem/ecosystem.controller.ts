@@ -283,34 +283,43 @@ export class EcosystemController {
       ? project.packageAddresses.slice(0, 5)
       : [project.latestPackageAddress || project.packageAddress].filter(Boolean) as string[];
     if (pkgAddrs.length && project.modules?.length) {
-      const allEvents: any[] = [];
-      for (const pkgAddr of pkgAddrs) {
-        for (const mod of project.modules.slice(0, 3)) {
-          const emittingModule = `${pkgAddr}::${mod}`;
-          let cursor: string | null = null;
-
-          for (let page = 0; page < 10; page++) {
-            const afterClause = cursor ? `, after: "${cursor}"` : '';
-            try {
-              const res = await fetch(this.ecosystemService.getGraphqlUrl(), {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  query: `{ events(filter: { emittingModule: "${emittingModule}" }, first: 50${afterClause}) { nodes { timestamp type { repr } sender { address } } pageInfo { hasNextPage endCursor } } }`,
-                }),
-              });
-              const json: any = await res.json();
-              if (json.errors?.length) break;
-              const nodes = json.data?.events?.nodes || [];
-              allEvents.push(...nodes);
-              if (!json.data?.events?.pageInfo?.hasNextPage) break;
-              cursor = json.data.events.pageInfo.endCursor;
-            } catch {
-              break;
-            }
+      // Each (package, module) chain paginates internally (cursor depends
+      // on previous page), but chains are independent of each other — so
+      // run them in parallel. IOTA GraphQL tolerates ≥20 parallel workers
+      // (`plans/limits.md`); our worst case is 5 × 3 = 15.
+      const fetchChain = async (emittingModule: string): Promise<any[]> => {
+        const events: any[] = [];
+        let cursor: string | null = null;
+        for (let page = 0; page < 10; page++) {
+          const afterClause = cursor ? `, after: "${cursor}"` : '';
+          try {
+            const res = await fetch(this.ecosystemService.getGraphqlUrl(), {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                query: `{ events(filter: { emittingModule: "${emittingModule}" }, first: 50${afterClause}) { nodes { timestamp type { repr } sender { address } } pageInfo { hasNextPage endCursor } } }`,
+              }),
+            });
+            const json: any = await res.json();
+            if (json.errors?.length) break;
+            const nodes = json.data?.events?.nodes || [];
+            events.push(...nodes);
+            if (!json.data?.events?.pageInfo?.hasNextPage) break;
+            cursor = json.data.events.pageInfo.endCursor;
+          } catch {
+            break;
           }
         }
+        return events;
+      };
+
+      const tuples: string[] = [];
+      for (const pkgAddr of pkgAddrs) {
+        for (const mod of project.modules.slice(0, 3)) {
+          tuples.push(`${pkgAddr}::${mod}`);
+        }
       }
+      const allEvents: any[] = (await Promise.all(tuples.map(fetchChain))).flat();
 
       // Group by day
       const byDay = new Map<string, { count: number; senders: Set<string>; }>();
