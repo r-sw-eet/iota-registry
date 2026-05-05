@@ -16,6 +16,8 @@ export const turingcerts: Team = {
   id: 'turingcerts',
   name: 'Turing Space (Turing Certs)',
   description: 'Digital-credentials platform in the IOTA Business Innovation Program. HQ Den Haag (Netherlands); offices in Taiwan, Japan, and the US. Operates the Turing Certs verifiable-credentials product — W3C VC / DID / OpenID4VC stack, ISO 27001 / 27701 / GDPR-compliant. Public flagship: digitized 3.5M+ Taiwan Renewable Energy Certificates. IOTA-partnered, not IF-operated.',
+  logo: '/logos/turingcerts.png',
+  logoWordmark: '/logos/turingcerts-wordmark.png',
   urls: [
     { label: 'Turing Certs', href: 'https://turingcerts.com' },
     { label: 'IOTA Blog: Introducing Turing Space', href: 'https://blog.iota.org/introducing-turing-space/' },
