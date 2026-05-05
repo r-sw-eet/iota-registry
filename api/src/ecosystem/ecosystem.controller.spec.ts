@@ -526,6 +526,122 @@ describe('EcosystemController', () => {
       expect(fetchMock).toHaveBeenCalledTimes(3);
     });
 
+    it('iterates the full upgrade chain — events from older package addresses union with the latest', async () => {
+      // Multi-package project simulating TWIN ImmutableProof's 6-version
+      // upgrade chain: emittingModule is strict per address, so older
+      // packages emit events that the latest's filter misses.
+      service.getLatest.mockResolvedValue({
+        l1: [mkProject({
+          modules: ['mod'],
+          packageAddress: '0x01',
+          latestPackageAddress: '0x03',
+          packageAddresses: ['0x01', '0x02', '0x03'],
+        })],
+        l2: [],
+      });
+      fetchMock
+        .mockResolvedValueOnce({
+          json: async () => ({
+            data: {
+              events: {
+                nodes: [{ timestamp: '2026-01-01T00:00:00Z', type: { repr: 'a::b::E1' }, sender: { address: '0xs' } }],
+                pageInfo: { hasNextPage: false, endCursor: null },
+              },
+            },
+          }),
+        })
+        .mockResolvedValueOnce({
+          json: async () => ({
+            data: {
+              events: {
+                nodes: [{ timestamp: '2026-01-02T00:00:00Z', type: { repr: 'a::b::E2' }, sender: { address: '0xs' } }],
+                pageInfo: { hasNextPage: false, endCursor: null },
+              },
+            },
+          }),
+        })
+        .mockResolvedValueOnce({
+          json: async () => ({
+            data: {
+              events: {
+                nodes: [{ timestamp: '2026-01-03T00:00:00Z', type: { repr: 'a::b::E3' }, sender: { address: '0xs' } }],
+                pageInfo: { hasNextPage: false, endCursor: null },
+              },
+            },
+          }),
+        });
+
+      const result = await controller.getProjectActivity('p1');
+
+      // 3 packages × 1 module × 1 page each = 3 fetch calls
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+      // Each call hits a different emittingModule (one per package address)
+      const bodies = fetchMock.mock.calls.map((c: any) => c[1].body);
+      expect(bodies[0]).toMatch(/emittingModule: \\?"0x01::mod\\?"/);
+      expect(bodies[1]).toMatch(/emittingModule: \\?"0x02::mod\\?"/);
+      expect(bodies[2]).toMatch(/emittingModule: \\?"0x03::mod\\?"/);
+      // Events from all 3 packages are unioned
+      expect(result.eventsPerDay).toEqual([
+        { date: '2026-01-01', count: 1 },
+        { date: '2026-01-02', count: 1 },
+        { date: '2026-01-03', count: 1 },
+      ]);
+      expect(result.eventTypes.map((e: any) => e.type).sort()).toEqual(['E1', 'E2', 'E3']);
+    });
+
+    it('caps the upgrade chain at 5 packages so very-long chains stay bounded', async () => {
+      service.getLatest.mockResolvedValue({
+        l1: [mkProject({
+          modules: ['mod'],
+          packageAddresses: ['0x01', '0x02', '0x03', '0x04', '0x05', '0x06', '0x07'],
+        })],
+        l2: [],
+      });
+      fetchMock.mockResolvedValue({
+        json: async () => ({ data: { events: { nodes: [], pageInfo: { hasNextPage: false, endCursor: null } } } }),
+      });
+      await controller.getProjectActivity('p1');
+      // 5 packages × 1 module × 1 page each = 5 fetch calls (cap at 5, not 7)
+      expect(fetchMock).toHaveBeenCalledTimes(5);
+    });
+
+    it('falls back to latestPackageAddress when packageAddresses is empty (legacy / unattributed shape)', async () => {
+      service.getLatest.mockResolvedValue({
+        l1: [mkProject({
+          modules: ['mod'],
+          packageAddress: '0xfirst',
+          latestPackageAddress: '0xlatest',
+          packageAddresses: [],
+        })],
+        l2: [],
+      });
+      fetchMock.mockResolvedValue({
+        json: async () => ({ data: { events: { nodes: [], pageInfo: { hasNextPage: false, endCursor: null } } } }),
+      });
+      await controller.getProjectActivity('p1');
+      // Falls back to latestPackageAddress; 1 fetch call
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(fetchMock.mock.calls[0][1].body).toMatch(/emittingModule: \\?"0xlatest::mod\\?"/);
+    });
+
+    it('falls back to packageAddress when latestPackageAddress is null', async () => {
+      service.getLatest.mockResolvedValue({
+        l1: [mkProject({
+          modules: ['mod'],
+          packageAddress: '0xanchor',
+          latestPackageAddress: null,
+          packageAddresses: [],
+        })],
+        l2: [],
+      });
+      fetchMock.mockResolvedValue({
+        json: async () => ({ data: { events: { nodes: [], pageInfo: { hasNextPage: false, endCursor: null } } } }),
+      });
+      await controller.getProjectActivity('p1');
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(fetchMock.mock.calls[0][1].body).toMatch(/emittingModule: \\?"0xanchor::mod\\?"/);
+    });
+
     it('pulls TVL history from DefiLlama for projects with tvl', async () => {
       service.getLatest.mockResolvedValue({
         l1: [mkProject({ tvl: 500, modules: [] })],
