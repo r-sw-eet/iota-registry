@@ -1,0 +1,1 @@
+export { figo } from './figo'
