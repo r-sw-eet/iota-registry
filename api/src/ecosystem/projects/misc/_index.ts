@@ -23,3 +23,5 @@ export { studioB8b1Demos } from './studio-b8b1-demos';
 export { studio0a0dExtras } from './studio-0a0d-extras';
 export { iotaSpam } from './iotaspam';
 export { studioB30cRootAnchor } from './studio-b30c-root-anchor';
+export { my2centsV1 } from './my2cents-v1';
+export { my2centsV2 } from './my2cents-v2';

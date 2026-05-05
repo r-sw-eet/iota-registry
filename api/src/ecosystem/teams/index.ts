@@ -7,7 +7,7 @@ import { echoProtocol, layerzero, wormholeFoundation } from './bridges/_index';
 import { switchboard, kamui } from './oracles/_index';
 import { tradeport, iotaPunks, apeDao, studio2cd3 } from './nft/_index';
 import { iotaFlip, gamifly, lostCrusader } from './games/_index';
-import { iotaFoundation, studioB8b1, studio0a0d, studioCb69, studio295e, studio5451, studio49c4, studiob5fc, studio457d, studiocebe, studioB30c, clawnera, izipublish, liquidlink, boltEarth, tokenlabs, risingPhoenix2 } from './misc/_index';
+import { iotaFoundation, studioB8b1, studio0a0d, studioCb69, studio295e, studio5451, studio49c4, studiob5fc, studio457d, studiocebe, studioB30c, clawnera, izipublish, liquidlink, boltEarth, tokenlabs, risingPhoenix2, shortaktien } from './misc/_index';
 
 /**
  * Team registry. Every project references exactly one team via `teamId`.
@@ -82,6 +82,9 @@ export const ALL_TEAMS: Team[] = [
   studioB8b1, studio0a0d, clawnera, studioCb69, studio295e, studio5451, studio49c4,
   studiob5fc, studio457d, studiocebe, studioB30c,
   izipublish, liquidlink, boltEarth, tokenlabs,
+  // ShortAktien — @shortaktien / Lord Alexander; ships My2Cents (mainnet
+  // social) + VectraMarket (testnet trading). Operator attestation 2026-05-05.
+  shortaktien,
 ];
 
 /** Look up a team by its id. Returns undefined if not found. */

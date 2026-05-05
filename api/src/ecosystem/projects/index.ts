@@ -16,6 +16,7 @@ import {
   studioB8b1Demos, studio0a0dExtras,
   iotaSpam,
   studioB30cRootAnchor,
+  my2centsV1, my2centsV2,
 } from './misc/_index';
 
 /**
@@ -131,6 +132,9 @@ export const ALL_PROJECTS: ProjectDefinition[] = [
   studioB30cRootAnchor,
   clawnera, vault, tokenSale, izipublish,
   giftDrop, liquidlink, boltEarth,
+  // ShortAktien — My2Cents v1 (`twitter` module) + v2 (`twitter_v2`),
+  // package-pinned. Disjoint deployers, no overlap with any other team.
+  my2centsV1, my2centsV2,
   tokenlabsStaking, tokenlabsVIota, tokenlabsTln, tokenlabsPayment,
   nativeStaking, iotaFramework,
   stardustMigratedTokens,

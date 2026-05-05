@@ -6,3 +6,4 @@ export { liquidlink } from './liquidlink';
 export { boltEarth } from './bolt-earth';
 export { tokenlabs } from './tokenlabs';
 export { risingPhoenix2 } from './rising-phoenix-2';
+export { shortaktien } from './shortaktien';
