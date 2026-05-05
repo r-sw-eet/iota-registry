@@ -3047,7 +3047,7 @@ describe('EcosystemService', () => {
   describe('enrichWithTvl', () => {
     const l1Project = (overrides: any = {}) => ({
       slug: 'p', name: 'Proto', layer: 'L1' as const, category: 'DeFi', description: '',
-      urls: [], packages: 1, packageAddress: '0x1', latestPackageAddress: '0x1',
+      urls: [], packages: 1, packageAddress: '0x1', latestPackageAddress: '0x1', packageAddresses: ['0x1'],
       storageIota: 0, events: 100, eventsCapped: false, transactions: 0, transactionsCapped: false,
       modules: [], tvl: null, tvlShared: null, tvlSharedWith: null, isCollectible: false,
       logo: null, logoWordmark: null, team: null, disclaimer: null, detectedDeployers: [],

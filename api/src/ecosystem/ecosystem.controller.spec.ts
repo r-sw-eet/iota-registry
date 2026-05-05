@@ -48,6 +48,7 @@ describe('EcosystemController', () => {
     packages: 1,
     packageAddress: '0xaa',
     latestPackageAddress: '0xaa',
+    packageAddresses: ['0xaa'],
     storageIota: 0,
     events: 0,
     eventsCapped: false,

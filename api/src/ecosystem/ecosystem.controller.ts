@@ -272,32 +272,42 @@ export class EcosystemController {
       tvlHistory: [],
     };
 
-    // Fetch events from GraphQL (up to 500) for L1 projects
-    const pkgAddr = project.latestPackageAddress || project.packageAddress;
-    if (pkgAddr && project.modules?.length) {
+    // Fetch events from GraphQL for L1 projects. IOTA's `emittingModule`
+    // filter is strict per package address, so multi-package projects (TWIN
+    // ImmutableProof = 6 versions of `verifiable_storage`) need to be
+    // queried per address — events emitted by older packages bind to those
+    // packages' addresses, not the latest. Cap the cross-product so larger
+    // upgrade chains don't blow out the request: top 5 packages × top 3
+    // modules × 10 pages = ≤150 GraphQL calls.
+    const pkgAddrs: string[] = (project.packageAddresses && project.packageAddresses.length)
+      ? project.packageAddresses.slice(0, 5)
+      : [project.latestPackageAddress || project.packageAddress].filter(Boolean) as string[];
+    if (pkgAddrs.length && project.modules?.length) {
       const allEvents: any[] = [];
-      for (const mod of project.modules.slice(0, 3)) {
-        const emittingModule = `${pkgAddr}::${mod}`;
-        let cursor: string | null = null;
+      for (const pkgAddr of pkgAddrs) {
+        for (const mod of project.modules.slice(0, 3)) {
+          const emittingModule = `${pkgAddr}::${mod}`;
+          let cursor: string | null = null;
 
-        for (let page = 0; page < 10; page++) {
-          const afterClause = cursor ? `, after: "${cursor}"` : '';
-          try {
-            const res = await fetch(this.ecosystemService.getGraphqlUrl(), {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                query: `{ events(filter: { emittingModule: "${emittingModule}" }, first: 50${afterClause}) { nodes { timestamp type { repr } sender { address } } pageInfo { hasNextPage endCursor } } }`,
-              }),
-            });
-            const json: any = await res.json();
-            if (json.errors?.length) break;
-            const nodes = json.data?.events?.nodes || [];
-            allEvents.push(...nodes);
-            if (!json.data?.events?.pageInfo?.hasNextPage) break;
-            cursor = json.data.events.pageInfo.endCursor;
-          } catch {
-            break;
+          for (let page = 0; page < 10; page++) {
+            const afterClause = cursor ? `, after: "${cursor}"` : '';
+            try {
+              const res = await fetch(this.ecosystemService.getGraphqlUrl(), {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  query: `{ events(filter: { emittingModule: "${emittingModule}" }, first: 50${afterClause}) { nodes { timestamp type { repr } sender { address } } pageInfo { hasNextPage endCursor } } }`,
+                }),
+              });
+              const json: any = await res.json();
+              if (json.errors?.length) break;
+              const nodes = json.data?.events?.nodes || [];
+              allEvents.push(...nodes);
+              if (!json.data?.events?.pageInfo?.hasNextPage) break;
+              cursor = json.data.events.pageInfo.endCursor;
+            } catch {
+              break;
+            }
           }
         }
       }

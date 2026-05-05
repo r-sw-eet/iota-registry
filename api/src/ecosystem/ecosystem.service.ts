@@ -249,6 +249,8 @@ export interface Project {
   packageAddress: string | null;
   /** Latest (upgraded) package address — used for event queries */
   latestPackageAddress: string | null;
+  /** All package addresses in this project's upgrade chain. IOTA GraphQL's `emittingModule` filter is strict per address, so multi-package projects (e.g. TWIN ImmutableProof's 6 versions of `verifiable_storage`) need to be queried per address; events emitted by older packages are bound to those packages' addresses, not the latest. Empty for L2 / DefiLlama-only entries. */
+  packageAddresses: string[];
   storageIota: number;
   events: number;
   eventsCapped: boolean;
@@ -4171,6 +4173,7 @@ export class EcosystemService implements OnModuleInit, OnApplicationShutdown {
         packages: facts.length,
         packageAddress: firstPkg.address,
         latestPackageAddress: latestPkg.address,
+        packageAddresses: facts.map(f => f.address),
         storageIota: Math.round(totalStorage * 10000) / 10000,
         events, eventsCapped,
         transactions, transactionsCapped,
@@ -4645,6 +4648,7 @@ export class EcosystemService implements OnModuleInit, OnApplicationShutdown {
           packages: 0,
           packageAddress: null,
           latestPackageAddress: null,
+          packageAddresses: [],
           storageIota: 0,
           events: 0,
           eventsCapped: false,
