@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "nuxt dev",
     "build": "nuxt build",
-    "generate": "nuxt generate",
+    "generate": "nuxt generate && node scripts/build-blog-og.mjs",
     "preview": "nuxt preview",
     "test:unit": "vitest run",
     "test:unit:watch": "vitest",
