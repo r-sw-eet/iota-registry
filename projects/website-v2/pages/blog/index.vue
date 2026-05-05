@@ -2,6 +2,16 @@
 import { publishedBlogPosts, isScheduled, type BlogPost } from '~/data/blog'
 
 useHead({ title: 'Blog — IOTA Registry' })
+useSeoMeta({
+  ogTitle: 'Blog — IOTA Registry',
+  ogDescription: 'Editorial posts — origin story, year-in-review pieces, and the accountability-led reading of what is actually happening on IOTA L1.',
+  ogUrl: 'https://iota-registry.org/blog',
+  ogImage: 'https://iota-registry.org/images/its-network_1.png',
+  twitterCard: 'summary_large_image',
+  twitterTitle: 'Blog — IOTA Registry',
+  twitterDescription: 'Editorial posts — origin story, year-in-review pieces, and the accountability-led reading of what is actually happening on IOTA L1.',
+  twitterImage: 'https://iota-registry.org/images/its-network_1.png',
+})
 
 const posts = computed<BlogPost[]>(() => publishedBlogPosts())
 </script>

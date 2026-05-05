@@ -13,9 +13,33 @@ export default defineNuxtConfig({
       apiBase: process.env.NUXT_PUBLIC_API_BASE || 'https://iota-trade-scanner.net/api/v1',
     },
   },
+  // Pre-render blog routes with SSR so OG/Twitter meta tags are baked into
+  // the static HTML — Twitter / LinkedIn / Facebook crawlers don't run JS,
+  // so client-side `useSeoMeta` would otherwise be invisible to them.
+  routeRules: {
+    '/blog': { ssr: true, prerender: true },
+    '/blog/**': { ssr: true, prerender: true },
+  },
   app: {
     head: {
       title: 'IOTA Registry — Projects & Teams',
+      meta: [
+        { name: 'description', content: 'Honest registry of IOTA Rebased L1 projects, teams, and announcements. Actual on-chain numbers, not curated press releases.' },
+        // Open Graph defaults — per-page useSeoMeta() overrides these on
+        // SSR-prerendered routes (see routeRules above for blog pages).
+        { property: 'og:site_name', content: 'IOTA Registry' },
+        { property: 'og:type', content: 'website' },
+        { property: 'og:title', content: 'IOTA Registry — Projects & Teams' },
+        { property: 'og:description', content: 'Honest registry of IOTA Rebased L1 projects, teams, and announcements. Actual on-chain numbers, not curated press releases.' },
+        { property: 'og:url', content: 'https://iota-registry.org/' },
+        { property: 'og:image', content: 'https://iota-registry.org/images/its-network_1.png' },
+        { property: 'og:image:width', content: '1440' },
+        { property: 'og:image:height', content: '1100' },
+        { name: 'twitter:card', content: 'summary_large_image' },
+        { name: 'twitter:title', content: 'IOTA Registry — Projects & Teams' },
+        { name: 'twitter:description', content: 'Honest registry of IOTA Rebased L1 projects, teams, and announcements.' },
+        { name: 'twitter:image', content: 'https://iota-registry.org/images/its-network_1.png' },
+      ],
       script: plausibleEnabled
         ? [
             { src: 'https://plausible.io/js/pa-DWMfDCTX_xttSKfBSXbM1.js', async: true },

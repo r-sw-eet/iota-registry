@@ -23,7 +23,7 @@ export const BLOG_POSTS: BlogPost[] = [
     title: 'Why iota-registry exists',
     subtitle: 'Built for myself, then for the community. "Actual numbers" is the ethos.',
     publishedAt: '2026-05-03',
-    author: 'Ralf Süss',
+    author: 'Ralf',
     summary:
       'Personal tool turned community infrastructure: the story behind iota-trade-scanner (now iota-registry) and the "actual numbers" ethos that drives it.',
     previewImage: '/images/its-network_1.png',
@@ -32,7 +32,7 @@ I originally built this site for myself.
 
 <!-- SCREENSHOT_SLIDER -->
 
-Around the time IOTA Rebased went live on mainnet, I wanted to know simple things — how many Move packages are actually deployed? Which teams shipped vs. which are still vapor? How much of the on-chain noise is real activity, and how much is test deploys or phishing spray? None of the existing tools could answer those questions honestly. Foundation blog posts were celebratory by design. Partner-list sites were curated by incentive. Community dashboards were thin or already pivoted toward NFT-gating the numbers everyone had a right to see.
+A couple of weeks ago I was asking myself the same question I'd been circling for months: *where is the usage? where is TWIN?* The announced projects of the last few years had been everywhere — on stage, in keynotes, in the partner slides. A year into IOTA Rebased mainnet, where had they actually landed on-chain? How many Move packages are real? Which teams shipped vs. which are still vapor? How much of the on-chain noise is genuine activity, and how much is test deploys or phishing spray? None of the existing tools could answer those questions honestly. Foundation blog posts were celebratory by design. Partner-list sites were curated by incentive. Community dashboards were thin or already pivoted toward NFT-gating the numbers everyone had a right to see.
 
 So I wrote a scanner. It pages every package on the L1 Move registry, clusters them by deployer, matches known teams, and publishes the result as plain data. Nothing is curated out. Unattributed deployers show up as unattributed. Phishing-spray rows stay visible, just flagged. When on-chain reality doesn't match a public claim, the registry shows the claim *and* the reality side by side — not to pick fights, just because that's the point.
 
@@ -75,7 +75,7 @@ Thanks for being here. Click around. The Projects / Teams / Announced / Network 
     title: 'Happy Birthday, IOTA L1 Rebased.',
     subtitle: 'Year one, reviewed in numbers.',
     publishedAt: '2026-05-05',
-    author: 'Ralf Süss',
+    author: 'Ralf',
     summary:
       'IOTA Rebased mainnet just turned one. Here is what shipped in year one, counted honestly — projects, teams, transactions, storage, and the pipeline of what was announced but hasn\'t landed yet.',
     previewImage: '/images/birthday.png',
@@ -93,11 +93,11 @@ The numbers above are pulled live from the registry's mainnet scan — every Mov
 The [Announced](/) tab is the accountability story. IOTA's first year produced dozens of publicly-announced projects — blog posts, hackathon winners, litepapers, partnership announcements. Here's the honest ledger of where those announcements landed:
 
 - **Shipped to mainnet**: graduated out of Announced and into the Projects tab. Count, evidence, deployer addresses all visible.
-- **Live on testnet**: observable footprint but not yet on mainnet. Small group so far; the public-testnet work is still early.
-- **Shared-rail**: anchoring activity via TWIN verifiable_storage or IOTA Identity — confirmed live, but no dedicated deployer row ever surfaces. Contributes to network metrics rather than showing up as "their own thing."
-- **Pre-live**: announced, no on-chain trace yet. Some will ship. Some already went silent; our 6-month lifecycle rule greys them out automatically.
+- **Pre-live**: announced, no on-chain trace yet. This is the bulk of Announced today — 70+ entries, mostly from the MasterZ Hackathon and APAC Moveathon cohorts plus Foundation-promoted partnerships (Orobo, TWIN-anchored compliance projects). Some will ship. Some already went silent; our 6-month lifecycle rule greys them out automatically.
 
-Year one's signal-to-noise in announcements was real. The hackathon circuit (MasterZ, APAC Moveathon) produced dozens of demos; most haven't crossed mainnet yet. Foundation-promoted partnerships (Orobo, TWIN-anchored compliance projects) are still in pilot. One year in, IOTA L1 is more pipeline than stampede — and that's fine. Truthful pipelines ship.
+The schema also has slots for two pre-mainnet states — *testnet-observed* (verifiable footprint short of mainnet) and *shared-rail* (anchoring via TWIN verifiable_storage or IOTA Identity, no dedicated deployer expected) — but both are empty today. Year one was an announcement year, not yet an observable-pre-live year. As that changes, those slots will fill.
+
+One year in, IOTA L1 is more pipeline than stampede — and that's fine. Truthful pipelines ship.
 
 ### What matters most
 

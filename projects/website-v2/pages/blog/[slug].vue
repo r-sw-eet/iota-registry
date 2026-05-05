@@ -11,6 +11,21 @@ useHead(() => ({
     : 'Blog — IOTA Registry',
 }))
 
+const SITE_URL = 'https://iota-registry.org'
+useSeoMeta({
+  ogType: 'article',
+  ogTitle: () => post.value?.title ?? 'Blog — IOTA Registry',
+  ogDescription: () => post.value?.summary ?? post.value?.subtitle ?? 'IOTA Registry — editorial.',
+  ogUrl: () => `${SITE_URL}/blog/${post.value?.slug ?? ''}`,
+  ogImage: () => post.value?.previewImage ? `${SITE_URL}${post.value.previewImage}` : `${SITE_URL}/images/its-network_1.png`,
+  twitterCard: 'summary_large_image',
+  twitterTitle: () => post.value?.title ?? 'Blog — IOTA Registry',
+  twitterDescription: () => post.value?.summary ?? post.value?.subtitle ?? 'IOTA Registry — editorial.',
+  twitterImage: () => post.value?.previewImage ? `${SITE_URL}${post.value.previewImage}` : `${SITE_URL}/images/its-network_1.png`,
+  articlePublishedTime: () => post.value?.publishedAt,
+  articleAuthor: () => post.value?.author ? [post.value.author] : undefined,
+})
+
 // The post body may contain one of two markers that slot a Vue component
 // between markdown halves:
 //   <!-- INFOGRAPHICS -->       → YearOneInfographics (birthday post)
