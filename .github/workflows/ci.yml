@@ -10,8 +10,8 @@ jobs:
   api-test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: '22'
           cache: npm
@@ -46,8 +46,8 @@ jobs:
       run:
         working-directory: projects/website-v2
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: '22'
           cache: npm
@@ -63,7 +63,7 @@ jobs:
         env:
           NUXT_PUBLIC_API_BASE: https://iota-trade-scanner.net/api/v1
       - name: Upload built site
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: website-v2-build
           path: projects/website-v2/.output/public
@@ -80,7 +80,7 @@ jobs:
       cancel-in-progress: false
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v5
         with:
           name: website-v2-build
           path: site
@@ -139,7 +139,7 @@ jobs:
           - name: scanner
             secret: DEPLOY_HOST_SCANNER
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Resolve host for this matrix entry
         id: host
         run: |
