@@ -1363,11 +1363,15 @@ watchEffect(() => {
   -webkit-overflow-scrolling: touch;
 }
 
-/* Header row pins to the viewport (overflow-y: clip on the table-scroll
-   ancestor lets sticky resolve against the page, not the wrapper). */
+/* Header row sticks at the top of the table-scroll wrapper. (Tried pinning
+   it to the viewport via `overflow-y: clip` — browsers still treat the
+   wrapper as the sticky context with overflow-x: auto, so the calc()
+   offset I had landed thead mid-table instead of below the toolbar.)
+   Top: 0 keeps it flush with the top of the table region while users
+   scroll through rows. */
 .scan-table thead th {
   position: sticky;
-  top: calc(var(--topbar-h, 61px) + var(--tabs-h, 41px) + var(--toolbar-h, 60px));
+  top: 0;
   background: var(--surface-2, #1a2540);
   z-index: 5;
 }

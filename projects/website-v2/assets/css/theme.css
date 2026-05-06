@@ -89,18 +89,16 @@
 }
 
 /* --- Sticky shell offsets -----------------------------------------------
-   Layered sticky: navbar > page-tabs > scan-toolbar > scan-table thead.
-   Each layer pins below the sum of all layers above it. Tweaked once
-   here so the page-level CSS can reference the cumulative offsets. */
+   Layered sticky: navbar > page-tabs > scan-toolbar. The thead inside the
+   scan tables sticks within its own table-scroll wrapper (top: 0), so it
+   doesn't need a layer var here. */
 :root {
   --topbar-h: 61px;
   --tabs-h: 41px;
-  --toolbar-h: 60px;
 }
 @media (max-width: 720px) {
   :root {
     --topbar-h: 92px;
-    --toolbar-h: 80px; /* toolbar wraps the layer-toggle on narrow screens */
   }
 }
 
