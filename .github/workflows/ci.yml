@@ -40,6 +40,83 @@ jobs:
           # ratchet; Codecov is just for the web UI.
           fail_ci_if_error: false
 
+  web-build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: projects/website-v2
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: projects/website-v2/package-lock.json
+      - run: npm ci
+      # `nuxi generate` reads NUXT_PUBLIC_API_BASE at build time and bakes it
+      # into the static bundle. Setting it explicitly here means we never
+      # accidentally ship a build that points at a developer's local API
+      # (the dev `.env` does just that). The `build-blog-og.mjs` post-build
+      # step also asserts no `localhost` URL leaked into the output.
+      - name: Generate static site
+        run: npm run generate
+        env:
+          NUXT_PUBLIC_API_BASE: https://iota-trade-scanner.net/api/v1
+      - name: Upload built site
+        uses: actions/upload-artifact@v4
+        with:
+          name: website-v2-build
+          path: projects/website-v2/.output/public
+          retention-days: 7
+
+  web-deploy:
+    needs: [web-build]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    # Serialize web deploys so two fast-follow main pushes can't race on the
+    # rsync. Independent of the api `deploy` group above — the static SPA
+    # and the api container don't share files.
+    concurrency:
+      group: web-deploy-main
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: website-v2-build
+          path: site
+      - name: Configure SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H ${{ secrets.DEPLOY_HOST_WEB }} >> ~/.ssh/known_hosts
+      - name: Rsync to web host
+        run: |
+          rsync -avz --no-perms --no-owner --no-group --delete-after \
+            -e "ssh -i ~/.ssh/deploy_key -o BatchMode=yes" \
+            site/ ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST_WEB }}:/var/www/iota-registry.org/
+      # Cheap post-deploy proof — verifies the live homepage is serving the
+      # bundle we just shipped, and that no `localhost` URL slipped through.
+      # This is the smoke test we paid for the hard way on 2026-05-06.
+      - name: Smoke test live site
+        run: |
+          live_api=$(curl -fsS https://iota-registry.org/ | grep -o 'apiBase[^"]*"[^"]*' || true)
+          echo "Live apiBase: $live_api"
+          if [ -z "$live_api" ]; then
+            echo "FAIL: couldn't read apiBase from live homepage"
+            exit 1
+          fi
+          if echo "$live_api" | grep -q 'localhost'; then
+            echo "FAIL: localhost apiBase made it to prod"
+            exit 1
+          fi
+          api_health=$(curl -fsS -o /dev/null -w '%{http_code}' https://iota-trade-scanner.net/api/v1/health || true)
+          echo "API /health: HTTP $api_health"
+          if [ "$api_health" != "200" ]; then
+            echo "FAIL: api health check failed"
+            exit 1
+          fi
+
   deploy:
     needs: [api-test]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
