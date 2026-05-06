@@ -142,7 +142,6 @@ function projectLogoUrl(p: TeamProject): string | null {
           <thead>
             <tr>
               <th>Project</th>
-              <th>Layer</th>
               <th>Category</th>
               <th class="num">TXs</th>
               <th class="num">Events</th>
@@ -161,7 +160,6 @@ function projectLogoUrl(p: TeamProject): string | null {
                   <span class="proj-name">{{ p.name }}</span>
                 </NuxtLink>
               </td>
-              <td><span class="layer-chip" :data-layer="p.layer">{{ p.layer }}</span></td>
               <td>{{ p.categoryLabel }}</td>
               <td class="num">{{ fmtNum(p.transactions) }}</td>
               <td class="num">{{ fmtNum(p.events) }}</td>
@@ -313,17 +311,6 @@ function projectLogoUrl(p: TeamProject): string | null {
 .proj-cell { display: inline-flex; align-items: center; gap: 10px; text-decoration: none; color: var(--text, #F1F5F9); }
 .proj-cell .proj-name { font-weight: 500; }
 .proj-cell:hover .proj-name { color: var(--accent, #F5B041); }
-
-.layer-chip {
-  display: inline-block;
-  font-family: var(--font-mono, 'JetBrains Mono', monospace);
-  font-size: 10px; letter-spacing: 0.04em;
-  padding: 2px 6px; border-radius: 4px;
-  border: 1px solid var(--border, #1C2740);
-  color: var(--text-mute, #94a3b8);
-}
-.layer-chip[data-layer="L1"] { color: var(--accent, #F5B041); border-color: var(--accent, #F5B041); }
-.layer-chip[data-layer="L2"] { color: #60a5fa; border-color: #3b82f6; }
 
 .state {
   padding: 40px; text-align: center; color: var(--text-mute, #94a3b8);

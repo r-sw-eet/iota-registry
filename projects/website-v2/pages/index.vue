@@ -585,7 +585,6 @@ watchEffect(() => {
             <tr>
               <th class="rank">#</th>
               <th>Project / Team</th>
-              <th>Layer</th>
               <th>{{ catHeader }}</th>
               <th class="num sortable" :class="{ active: sortKey === 'transactions' }" @click="setSort('transactions')">
                 TXs <i class="fa-solid sort-ic" :class="sortIcon('transactions')" />
@@ -625,7 +624,6 @@ watchEffect(() => {
                   </div>
                 </div>
               </td>
-              <td><span class="layer-chip" :data-layer="p.layer">{{ p.layer }}</span></td>
               <td>
                 <div class="cat-stack">
                   <span class="cat-main">{{ catMain(p) }}</span>
@@ -640,7 +638,7 @@ watchEffect(() => {
               <td class="num">{{ p.storageIota != null ? fmtIota(p.storageIota) : '—' }}</td>
             </tr>
             <tr v-if="!filteredSorted.length">
-              <td colspan="10" class="empty">No projects match the current filters.</td>
+              <td colspan="9" class="empty">No projects match the current filters.</td>
             </tr>
           </tbody>
         </table></div>
@@ -690,7 +688,6 @@ watchEffect(() => {
             <tr>
               <th class="rank">#</th>
               <th>Team</th>
-              <th>Layer</th>
               <th>{{ catHeader }}</th>
               <th class="num sortable" :class="{ active: sortKey === 'transactions' }" @click="setSort('transactions')">
                 TXs <i class="fa-solid sort-ic" :class="sortIcon('transactions')" />
@@ -726,7 +723,6 @@ watchEffect(() => {
                   <NuxtLink :to="`/team/${t.id}`" class="proj-name">{{ t.name }}</NuxtLink>
                 </div>
               </td>
-              <td><span class="layer-chip" :data-layer="t.layer">{{ t.layer }}</span></td>
               <td>
                 <div class="cat-stack">
                   <span class="cat-main">{{ catMain(t) }}</span>
@@ -741,7 +737,7 @@ watchEffect(() => {
               <td class="num">{{ t.storageIota ? fmtIota(t.storageIota) : '—' }}</td>
             </tr>
             <tr v-if="!filteredSortedTeams.length">
-              <td colspan="10" class="empty">No teams match the current filters.</td>
+              <td colspan="9" class="empty">No teams match the current filters.</td>
             </tr>
           </tbody>
         </table></div>
@@ -1670,22 +1666,4 @@ watchEffect(() => {
 }
 .avatar img { width: 100%; height: 100%; object-fit: cover; }
 
-.layer-chip {
-  display: inline-block;
-  font-family: var(--font-mono, 'JetBrains Mono', monospace);
-  font-size: 10px;
-  letter-spacing: 0.04em;
-  padding: 2px 6px;
-  border-radius: 4px;
-  border: 1px solid var(--border, #1C2740);
-  color: var(--text-mute, #94a3b8);
-}
-.layer-chip[data-layer="L1"] {
-  color: var(--accent, #F5B041);
-  border-color: var(--accent, #F5B041);
-}
-.layer-chip[data-layer="L2"] {
-  color: #60a5fa;
-  border-color: #3b82f6;
-}
 </style>

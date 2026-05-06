@@ -144,7 +144,6 @@ function explorerAddr(addr: string): string {
         <div class="head-text">
           <div class="title-row">
             <h1>{{ project.name }}</h1>
-            <span class="layer-chip" :data-layer="project.layer">{{ project.layer }}</span>
           </div>
           <div class="sub">
             <span v-if="project.categoryLabel">{{ project.categoryLabel }}</span>
@@ -400,19 +399,6 @@ function explorerAddr(addr: string): string {
   font-family: var(--font-mono, 'JetBrains Mono', monospace);
 }
 .urls a:hover { text-decoration: underline; }
-
-.layer-chip {
-  display: inline-block;
-  font-family: var(--font-mono, 'JetBrains Mono', monospace);
-  font-size: 10px;
-  letter-spacing: 0.04em;
-  padding: 2px 6px;
-  border-radius: 4px;
-  border: 1px solid var(--border, #1C2740);
-  color: var(--text-mute, #94a3b8);
-}
-.layer-chip[data-layer="L1"] { color: var(--accent, #F5B041); border-color: var(--accent, #F5B041); }
-.layer-chip[data-layer="L2"] { color: #60a5fa; border-color: #3b82f6; }
 
 .descr {
   color: var(--text-dim, #cbd5e1);
