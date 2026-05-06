@@ -1328,13 +1328,16 @@ watchEffect(() => {
 }
 .scan-table th.sortable.active .sort-ic { opacity: 1; }
 
-/* Tabbed-area shell: match the breathing room the Network tab already has. */
+/* Tabbed-area shell: drop the card 14px below the page-tabs underline so
+   it doesn't visually butt against it. `.network-wrap` uses padding-top
+   because it isn't itself a bordered card; `.scan-wrap` IS a card (border
+   + background from app.css), so the gap has to live outside the box. */
 .scan-wrap {
   /* Override app.css `.scan-wrap { overflow: hidden }` so sibling sticky
      elements (toolbar, thead) can pin against the viewport instead of being
      trapped inside an overflow context. */
   overflow: visible;
-  padding-top: 14px;
+  margin-top: 14px;
 }
 
 /* Search bar pins below the page tabs while the rest of the page scrolls.
