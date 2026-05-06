@@ -10,7 +10,7 @@ jobs:
   api-test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - uses: actions/setup-node@v5
         with:
           node-version: '22'
@@ -46,7 +46,7 @@ jobs:
       run:
         working-directory: projects/website-v2
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - uses: actions/setup-node@v5
         with:
           node-version: '22'
@@ -139,7 +139,7 @@ jobs:
           - name: scanner
             secret: DEPLOY_HOST_SCANNER
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Resolve host for this matrix entry
         id: host
         run: |
