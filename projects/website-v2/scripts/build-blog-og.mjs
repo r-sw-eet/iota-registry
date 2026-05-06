@@ -27,6 +27,19 @@ const { BLOG_POSTS } = await jiti.import(join(ROOT, 'data/blog.ts'))
 
 const template = readFileSync(join(OUT, '200.html'), 'utf8')
 
+// Guard against the dev `.env` (`NUXT_PUBLIC_API_BASE=http://localhost:3004/...`)
+// silently leaking into a prod build. Observed 2026-05-06: ran `npm run
+// generate` without overriding the env var, baked localhost into 200.html,
+// rsync'd to prod, every API call from the browser failed. The guard
+// hard-fails the build before any rsync can ship the broken artifact.
+if (/apiBase:"http:\/\/localhost/.test(template)) {
+  throw new Error(
+    'build-blog-og: localhost apiBase detected in 200.html. ' +
+    'Re-run with NUXT_PUBLIC_API_BASE=https://iota-trade-scanner.net/api/v1 ' +
+    'before rsyncing to prod.',
+  )
+}
+
 function ogImageFor(post) {
   const fallback = '/images/site-og.png'
   const src = post.previewImage || fallback

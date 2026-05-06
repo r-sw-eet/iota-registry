@@ -580,7 +580,7 @@ watchEffect(() => {
           </div>
         </div>
 
-        <table class="scan-table">
+        <div class="table-scroll"><table class="scan-table">
           <thead>
             <tr>
               <th class="rank">#</th>
@@ -643,7 +643,7 @@ watchEffect(() => {
               <td colspan="10" class="empty">No projects match the current filters.</td>
             </tr>
           </tbody>
-        </table>
+        </table></div>
       </div>
 
       <!-- Teams — mirrors the Projects scan table with team-level aggregates -->
@@ -685,7 +685,7 @@ watchEffect(() => {
           </div>
         </div>
 
-        <table class="scan-table">
+        <div class="table-scroll"><table class="scan-table">
           <thead>
             <tr>
               <th class="rank">#</th>
@@ -744,7 +744,7 @@ watchEffect(() => {
               <td colspan="10" class="empty">No teams match the current filters.</td>
             </tr>
           </tbody>
-        </table>
+        </table></div>
       </div>
 
       <!-- Unattributed clusters -->
@@ -765,7 +765,7 @@ watchEffect(() => {
           </button>
         </div>
 
-        <table class="scan-table">
+        <div class="table-scroll"><table class="scan-table">
           <thead>
             <tr>
               <th class="rank">#</th>
@@ -827,7 +827,7 @@ watchEffect(() => {
               <td colspan="8" class="empty">No unattributed clusters match the current search.</td>
             </tr>
           </tbody>
-        </table>
+        </table></div>
       </div>
 
       <!-- Announced — curated watchlist of publicly-announced IOTA projects
@@ -855,7 +855,7 @@ watchEffect(() => {
           </button>
         </div>
 
-        <table class="scan-table announced-table">
+        <div class="table-scroll"><table class="scan-table announced-table">
           <thead>
             <tr>
               <th class="rank">#</th>
@@ -879,21 +879,23 @@ watchEffect(() => {
               <td class="rank">{{ i + 1 }}</td>
               <td>
                 <NuxtLink :to="`/announced/${a.id}`" class="proj-name">{{ a.name }}</NuxtLink>
-                <span
-                  v-if="a.hackathons && a.hackathons.some(h => h.result === 'winner')"
-                  class="stage-chip"
-                  data-stage="hackathon-winner"
-                  :title="a.hackathons.filter(h => h.result === 'winner').map(h => h.event + (h.note ? ' — ' + h.note : '')).join(' · ')"
-                >HACKATHON WINNER</span>
-                <span
-                  v-else-if="a.hackathons && a.hackathons.length > 0"
-                  class="stage-chip"
-                  data-stage="hackathon-participant"
-                  :title="a.hackathons.map(h => h.event + (h.note ? ' — ' + h.note : '')).join(' · ')"
-                >HACKATHON</span>
-                <span v-if="a.stage === 'startup'" class="stage-chip" data-stage="startup">STARTUP</span>
-                <span v-else-if="a.stage === 'company'" class="stage-chip" data-stage="company">COMPANY</span>
-                <span v-if="hasDemoBadge(a)" class="stage-chip" data-stage="demo">DEMO</span>
+                <div class="stage-chips">
+                  <span
+                    v-if="a.hackathons && a.hackathons.some(h => h.result === 'winner')"
+                    class="stage-chip"
+                    data-stage="hackathon-winner"
+                    :title="a.hackathons.filter(h => h.result === 'winner').map(h => h.event + (h.note ? ' — ' + h.note : '')).join(' · ')"
+                  >HACKATHON WINNER</span>
+                  <span
+                    v-else-if="a.hackathons && a.hackathons.length > 0"
+                    class="stage-chip"
+                    data-stage="hackathon-participant"
+                    :title="a.hackathons.map(h => h.event + (h.note ? ' — ' + h.note : '')).join(' · ')"
+                  >HACKATHON</span>
+                  <span v-if="a.stage === 'startup'" class="stage-chip" data-stage="startup">STARTUP</span>
+                  <span v-else-if="a.stage === 'company'" class="stage-chip" data-stage="company">COMPANY</span>
+                  <span v-if="hasDemoBadge(a)" class="stage-chip" data-stage="demo">DEMO</span>
+                </div>
               </td>
               <td>
                 <span class="tier-chip" :data-tier="a.tier">{{ TIER_LABEL[a.tier] }}</span>
@@ -916,7 +918,7 @@ watchEffect(() => {
               <td colspan="7" class="empty">No announced projects match the current filters.</td>
             </tr>
           </tbody>
-        </table>
+        </table></div>
       </div>
 
       <!-- Network -->
@@ -1326,29 +1328,85 @@ watchEffect(() => {
 }
 .scan-table th.sortable.active .sort-ic { opacity: 1; }
 
-/* Mobile: hide less-critical columns, collapse chip rows */
-@media (max-width: 1100px) {
-  /* Hide Objects (8) and Storage (10) first */
-  .scan-table th:nth-child(8),
-  .scan-table td:nth-child(8),
-  .scan-table th:nth-child(10),
-  .scan-table td:nth-child(10) { display: none; }
+/* Tabbed-area shell: match the breathing room the Network tab already has. */
+.scan-wrap {
+  /* Override app.css `.scan-wrap { overflow: hidden }` so sibling sticky
+     elements (toolbar, thead) can pin against the viewport instead of being
+     trapped inside an overflow context. */
+  overflow: visible;
+  padding-top: 14px;
 }
+
+/* Search bar pins below the page tabs while the rest of the page scrolls.
+   Stack offsets defined in theme.css: navbar → tabs → toolbar → thead. */
+.scan-toolbar {
+  position: sticky;
+  top: calc(var(--topbar-h, 61px) + var(--tabs-h, 41px));
+  z-index: 30;
+  background: var(--surface, #111A2B);
+}
+
+/* The horizontal scroll container for the table. Keeping the table inside
+   its own scroller (not on `.scan-wrap`) lets the toolbar above stay
+   viewport-sticky — making `.scan-wrap` itself scrollable would trap its
+   sticky descendants inside it.
+   `overflow-y: clip` is explicit (not the default `visible`) so browsers
+   don't apply the overflow-x/y "paradox" coercion that turns y into auto;
+   we want thead's sticky to skip this container and resolve against the
+   nearest real y-scroll ancestor (the viewport). */
+.table-scroll {
+  overflow-x: auto;
+  overflow-y: clip;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Header row pins to the viewport (overflow-y: clip on the table-scroll
+   ancestor lets sticky resolve against the page, not the wrapper). */
+.scan-table thead th {
+  position: sticky;
+  top: calc(var(--topbar-h, 61px) + var(--tabs-h, 41px) + var(--toolbar-h, 60px));
+  background: var(--surface-2, #1a2540);
+  z-index: 5;
+}
+
 @media (max-width: 820px) {
-  /* Hide Wallets (7) and Packages (9) */
-  .scan-table th:nth-child(7),
-  .scan-table td:nth-child(7),
-  .scan-table th:nth-child(9),
-  .scan-table td:nth-child(9) { display: none; }
   .scan-toolbar { flex-wrap: wrap; }
   .chip-row { flex-direction: column; gap: 6px; padding: 10px 12px; }
   .chip-label { min-width: 0; padding-top: 0; }
 }
-@media (max-width: 560px) {
-  /* Hide Category / Sub (4) */
-  .scan-table th:nth-child(4),
-  .scan-table td:nth-child(4) { display: none; }
-  .scan-table { font-size: 12px; }
+
+/* Mobile: keep all columns visible (horizontal scroll), but pin the rank
+   and Project/Team columns so the row identity is always on screen. */
+@media (max-width: 720px) {
+  .scan-table { min-width: 760px; font-size: 12px; }
+  .scan-table th:nth-child(1),
+  .scan-table td:nth-child(1) {
+    position: sticky;
+    left: 0;
+    background: var(--surface, #111A2B);
+    z-index: 4;
+  }
+  .scan-table th:nth-child(2),
+  .scan-table td:nth-child(2) {
+    position: sticky;
+    left: 40px;
+    background: var(--surface, #111A2B);
+    z-index: 4;
+  }
+  /* thead corners need to stack above body sticky cells. */
+  .scan-table thead th:nth-child(1),
+  .scan-table thead th:nth-child(2) { z-index: 6; }
+  /* Visual separator between sticky cols and the scrolling cells. */
+  .scan-table th:nth-child(2),
+  .scan-table td:nth-child(2) {
+    box-shadow: 1px 0 0 0 var(--border, #1C2740);
+  }
+  /* Hover background must apply to sticky cells too, otherwise the row
+     hover ends abruptly at column 3. */
+  .scan-table tbody tr:hover td:nth-child(1),
+  .scan-table tbody tr:hover td:nth-child(2) {
+    background: #131e34;
+  }
 }
 .scan-table a { color: var(--text, #F1F5F9); text-decoration: none; }
 .scan-table .dim { color: var(--text-mute, #94a3b8); }
@@ -1457,9 +1515,18 @@ watchEffect(() => {
   max-width: 360px;
 }
 
+/* Sit chips below the project name, left-aligned with it (the link starts
+   at the cell's padding, this flex row starts at the same x). */
+.stage-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+
 .stage-chip {
-  display: inline-block;
-  margin-left: 8px;
+  display: inline-flex;
+  align-items: center;
   font-family: var(--font-mono, 'JetBrains Mono', monospace);
   font-size: 9px;
   letter-spacing: 0.1em;
@@ -1467,7 +1534,12 @@ watchEffect(() => {
   border-radius: 3px;
   border: 1px solid var(--border, #1C2740);
   color: var(--text-mute, #94a3b8);
-  vertical-align: middle;
+  /* "HACKATHON WINNER" was wrapping mid-text on narrow viewports — pin it
+     to one line and let the cell truncate with an ellipsis instead. */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 110px;
 }
 .stage-chip[data-stage="hackathon-winner"] {
   background: rgba(245, 176, 65, 0.12);
