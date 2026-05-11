@@ -434,6 +434,12 @@ const currentOrderedIds = computed<string[]>(() => {
 
 // Restore synchronously at setup time so the watchEffect below doesn't
 // overwrite saved state with defaults on the first tick.
+const route = useRoute()
+function tabFromQuery(q: unknown): typeof tab.value | null {
+  return q === 'projects' || q === 'teams' || q === 'unattributed' || q === 'announced' || q === 'network'
+    ? q
+    : null
+}
 if (typeof window !== 'undefined') {
   const saved = readListNav()
   if (saved) {
@@ -441,10 +447,14 @@ if (typeof window !== 'undefined') {
   }
   // ?tab=<name> URL parameter takes precedence — lets external links jump
   // directly to a tab (e.g. the layout chip linking to ?tab=network).
-  const urlTab = new URLSearchParams(window.location.search).get('tab')
-  if (urlTab === 'projects' || urlTab === 'teams' || urlTab === 'unattributed' || urlTab === 'announced' || urlTab === 'network') {
-    tab.value = urlTab
-  }
+  const urlTab = tabFromQuery(route.query.tab)
+  if (urlTab) tab.value = urlTab
+  // Same page, query-only navigation (clicking the chip while already on /)
+  // doesn't re-run setup — watch the query so in-app links still switch tabs.
+  watch(() => route.query.tab, q => {
+    const next = tabFromQuery(q)
+    if (next) tab.value = next
+  })
   if (saved) {
     const f = saved.filters as Record<string, unknown>
     if (typeof f.selectedLayer === 'string') selectedLayer.value = f.selectedLayer as 'all' | 'L1' | 'L2'
