@@ -438,6 +438,14 @@ if (typeof window !== 'undefined') {
   const saved = readListNav()
   if (saved) {
     tab.value = saved.tab
+  }
+  // ?tab=<name> URL parameter takes precedence — lets external links jump
+  // directly to a tab (e.g. the layout chip linking to ?tab=network).
+  const urlTab = new URLSearchParams(window.location.search).get('tab')
+  if (urlTab === 'projects' || urlTab === 'teams' || urlTab === 'unattributed' || urlTab === 'announced' || urlTab === 'network') {
+    tab.value = urlTab
+  }
+  if (saved) {
     const f = saved.filters as Record<string, unknown>
     if (typeof f.selectedLayer === 'string') selectedLayer.value = f.selectedLayer as 'all' | 'L1' | 'L2'
     if (typeof f.selectedCategory === 'string') selectedCategory.value = f.selectedCategory

@@ -18,11 +18,11 @@
         <NuxtLink to="/developers">Docs</NuxtLink>
       </nav>
       <div class="grow" />
-      <span class="chip-btn" :title="latest ? `Latest epoch · IOTA mainnet` : 'IOTA mainnet'">
+      <NuxtLink to="/?tab=network" class="chip-btn" :title="latest ? `Open Network tab · IOTA mainnet` : 'IOTA mainnet'">
         <span class="status-dot" />
         mainnet
-        <span v-if="latest?.epoch != null" class="chip-epoch">· Epoch {{ latest.epoch }}</span>
-      </span>
+        <span v-if="latest?.currentEpoch != null" class="chip-epoch">· Epoch {{ latest.currentEpoch }}</span>
+      </NuxtLink>
     </header>
     <div class="v2-main">
       <div class="v2-content">
@@ -58,9 +58,9 @@ const { $api } = useApi()
 
 // Minimal epoch ping — reuses the 'snapshots-latest' key so if another
 // page already fetched /snapshots/latest, useAsyncData dedupes to one call.
-const { data: latest } = await useAsyncData<{ epoch: number }>(
+const { data: latest } = await useAsyncData<{ epoch: number; currentEpoch?: number }>(
   'snapshots-latest',
-  () => $api<{ epoch: number }>('/snapshots/latest'),
+  () => $api<{ epoch: number; currentEpoch?: number }>('/snapshots/latest'),
 )
 
 useHead({
