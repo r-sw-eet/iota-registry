@@ -435,6 +435,7 @@ const currentOrderedIds = computed<string[]>(() => {
 // Restore synchronously at setup time so the watchEffect below doesn't
 // overwrite saved state with defaults on the first tick.
 const route = useRoute()
+const router = useRouter()
 function tabFromQuery(q: unknown): typeof tab.value | null {
   return q === 'projects' || q === 'teams' || q === 'unattributed' || q === 'announced' || q === 'network'
     ? q
@@ -449,12 +450,18 @@ if (typeof window !== 'undefined') {
   // directly to a tab (e.g. the layout chip linking to ?tab=network).
   const urlTab = tabFromQuery(route.query.tab)
   if (urlTab) tab.value = urlTab
-  // Same page, query-only navigation (clicking the chip while already on /)
-  // doesn't re-run setup — watch the query so in-app links still switch tabs.
+  // Bidirectional sync. URL → tab handles in-app NuxtLink navigations
+  // (chip → /?tab=network while already on /, which doesn't re-run setup).
+  // Tab → URL keeps the address bar honest when the user clicks a tab
+  // button, and makes every tab bookmarkable / linkable.
   watch(() => route.query.tab, q => {
     const next = tabFromQuery(q)
     if (next) tab.value = next
   })
+  watch(tab, t => {
+    if (route.query.tab === t) return
+    void router.replace({ query: { ...route.query, tab: t } })
+  }, { immediate: true })
   if (saved) {
     const f = saved.filters as Record<string, unknown>
     if (typeof f.selectedLayer === 'string') selectedLayer.value = f.selectedLayer as 'all' | 'L1' | 'L2'
