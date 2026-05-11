@@ -1,4 +1,17 @@
+import { execSync } from 'node:child_process'
+
 const plausibleEnabled = process.env.NODE_ENV === 'production'
+
+function gitInfo(): { sha: string; date: string } {
+  try {
+    const sha = execSync('git rev-parse --short HEAD', { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim()
+    const date = execSync('git log -1 --format=%cI HEAD', { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim()
+    return { sha, date }
+  } catch {
+    return { sha: '', date: '' }
+  }
+}
+const git = gitInfo()
 
 export default defineNuxtConfig({
   compatibilityDate: '2026-04-22',
@@ -11,6 +24,8 @@ export default defineNuxtConfig({
   runtimeConfig: {
     public: {
       apiBase: process.env.NUXT_PUBLIC_API_BASE || 'https://iota-trade-scanner.net/api/v1',
+      commitSha: git.sha,
+      commitDate: git.date,
     },
   },
   // Pre-render blog routes with SSR so OG/Twitter meta tags are baked into

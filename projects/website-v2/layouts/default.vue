@@ -36,16 +36,27 @@
           <p>On-chain data sourced from <a href="https://iota.org" target="_blank" rel="noopener">IOTA mainnet</a> · TVL data via <a href="https://defillama.com" target="_blank" rel="noopener">DefiLlama</a>.</p>
           <p>Not affiliated with <a href="https://iota.org" target="_blank" rel="noopener">IOTA Foundation</a>. "IOTA" and its logo are trademarks of the IOTA Foundation.</p>
         </div>
-        <div class="links">
-          <a href="https://github.com/r-sw-eet/iota-registry" target="_blank" rel="noopener" title="Source on GitHub">
-            <i class="fa-brands fa-github" /> GitHub
-          </a>
-          <span class="sep">·</span>
-          <NuxtLink to="/imprint">Imprint</NuxtLink>
-          <span class="sep">·</span>
-          <NuxtLink to="/privacy">Privacy</NuxtLink>
-          <span class="sep">·</span>
-          <a href="mailto:hello@iota-registry.org">hello@iota-registry.org</a>
+        <div class="footer-right">
+          <div class="links">
+            <a href="https://github.com/r-sw-eet/iota-registry" target="_blank" rel="noopener" title="Source on GitHub">
+              <i class="fa-brands fa-github" /> GitHub
+            </a>
+            <span class="sep">·</span>
+            <NuxtLink to="/imprint">Imprint</NuxtLink>
+            <span class="sep">·</span>
+            <NuxtLink to="/privacy">Privacy</NuxtLink>
+            <span class="sep">·</span>
+            <a href="mailto:hello@iota-registry.org">hello@iota-registry.org</a>
+          </div>
+          <div v-if="commitSha" class="build-info">
+            <a
+              :href="`https://github.com/r-sw-eet/iota-registry/commit/${commitSha}`"
+              target="_blank"
+              rel="noopener"
+              :title="commitDateTitle"
+            >{{ commitSha }}</a>
+            <span v-if="commitDateLabel"> · {{ commitDateLabel }}</span>
+          </div>
         </div>
       </div>
     </footer>
@@ -55,6 +66,14 @@
 <script setup lang="ts">
 const route = useRoute()
 const { $api } = useApi()
+const config = useRuntimeConfig()
+
+const commitSha = String(config.public.commitSha || '')
+const commitDateIso = String(config.public.commitDate || '')
+// Friendly YYYY-MM-DD label in the footer, full ISO timestamp in the tooltip.
+// commitDate is the ISO from `git log -1 --format=%cI` — bake-time, not render-time.
+const commitDateLabel = commitDateIso ? commitDateIso.slice(0, 10) : ''
+const commitDateTitle = commitDateIso ? `Last commit: ${commitDateIso}` : ''
 
 // Minimal epoch ping — reuses the 'snapshots-latest' key so if another
 // page already fetched /snapshots/latest, useAsyncData dedupes to one call.
@@ -121,6 +140,12 @@ nav button.disabled {
 .v2-footer .disclaimer p:last-child { margin-bottom: 0; }
 .v2-footer .disclaimer a { color: var(--text-mute, #94a3b8); text-decoration: underline; text-underline-offset: 2px; }
 .v2-footer .disclaimer a:hover { color: var(--accent, #F5B041); }
+.v2-footer .footer-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
 .v2-footer .links {
   font-family: var(--font-mono, 'JetBrains Mono', monospace);
   font-size: 11px;
@@ -136,6 +161,19 @@ nav button.disabled {
 }
 .v2-footer .links a:hover { color: var(--accent, #F5B041); }
 .v2-footer .sep { opacity: 0.5; }
+.v2-footer .build-info {
+  font-family: var(--font-mono, 'JetBrains Mono', monospace);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--text-mute, #94a3b8);
+  opacity: 0.7;
+}
+.v2-footer .build-info a {
+  color: inherit;
+  text-decoration: none;
+  border-bottom: 1px dotted currentColor;
+}
+.v2-footer .build-info a:hover { color: var(--accent, #F5B041); }
 
 /* Mobile: stack topbar, hide non-critical chips */
 @media (max-width: 720px) {
@@ -166,5 +204,6 @@ nav button.disabled {
     align-items: flex-start;
     gap: 12px;
   }
+  .v2-footer .footer-right { align-items: flex-start; }
 }
 </style>
