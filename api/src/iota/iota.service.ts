@@ -124,8 +124,11 @@ export class IotaService {
 
   async getPreviousEpochStats(currentEpoch: number) {
     const prevId = currentEpoch - 1;
-    const data = await this.graphql(`{ epoch(id: ${prevId}) { ${this.EPOCH_FIELDS} } }`);
-    return this.decodeEpoch(data.epoch);
+    const data = await this.graphql(`{ epoch(id: ${prevId}) { epochId ${this.EPOCH_FIELDS} } }`);
+    return {
+      epoch: Number(data.epoch.epochId),
+      ...this.decodeEpoch(data.epoch),
+    };
   }
 
   async getEpochSummary(epochId: number) {
@@ -158,8 +161,10 @@ export class IotaService {
         this.getNetworkTotalTransactions(),
       ]);
 
-    // Previous epoch gas/tx data
-    let epochStats: ReturnType<typeof this.decodeEpoch> = {
+    // Previous (just-completed) epoch — this is the epoch whose totals are final.
+    // The snapshot doc is keyed by this epoch, not by the in-progress one.
+    let epochStats: Awaited<ReturnType<typeof this.getPreviousEpochStats>> = {
+      epoch: systemState.epoch - 1,
       epochGasBurned: 0,
       epochTransactions: 0,
       epochStorageNetInflow: 0,
@@ -181,7 +186,8 @@ export class IotaService {
     const stakingRatio = systemState.totalStaked / systemState.totalSupply * 100;
 
     return {
-      epoch: systemState.epoch,
+      ...epochStats,
+      currentEpoch: systemState.epoch,
       timestamp: new Date(),
       totalSupply: systemState.totalSupply,
       circulatingSupply: circulating.circulatingSupply,
@@ -198,7 +204,6 @@ export class IotaService {
       referenceGasPrice: systemState.referenceGasPrice,
       storagePrice: protocol.storageGasPrice,
       checkpointCount: circulating.atCheckpoint,
-      ...epochStats,
     };
   }
 }

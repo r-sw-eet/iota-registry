@@ -3,8 +3,14 @@ import { Document } from 'mongoose';
 
 @Schema({ timestamps: true })
 export class Snapshot extends Document {
+  // The completed epoch this snapshot's gas/tx aggregates describe.
   @Prop({ required: true, unique: true })
   epoch: number;
+
+  // The in-progress epoch at capture time (epoch + 1). Lets the frontend
+  // render the live/in-progress epoch as a placeholder without re-querying chain.
+  @Prop()
+  currentEpoch: number;
 
   @Prop()
   timestamp: Date;

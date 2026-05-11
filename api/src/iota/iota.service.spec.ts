@@ -205,6 +205,7 @@ describe('IotaService', () => {
       );
       const result = await service.getPreviousEpochStats(42);
       expect(result).toEqual({
+        epoch: 41,
         epochGasBurned: 2,
         epochTransactions: 1000,
         epochStorageNetInflow: 0.5,
@@ -341,7 +342,8 @@ describe('IotaService', () => {
 
       const snapshot = await service.captureFullSnapshot();
       expect(snapshot).toMatchObject({
-        epoch: 42,
+        epoch: 41,
+        currentEpoch: 42,
         totalSupply: 4_600_000_000,
         circulatingSupply: 1000,
         circulatingPercentage: 47,
@@ -372,6 +374,8 @@ describe('IotaService', () => {
         .mockReturnValueOnce(graphqlError('epoch-unavailable'));
 
       const snapshot = await service.captureFullSnapshot();
+      expect(snapshot.epoch).toBe(41); // fallback: systemState.epoch - 1
+      expect(snapshot.currentEpoch).toBe(42);
       expect(snapshot.epochGasBurned).toBe(0);
       expect(snapshot.epochTransactions).toBe(0);
       expect(snapshot.gasPerTransaction).toBe(0);
