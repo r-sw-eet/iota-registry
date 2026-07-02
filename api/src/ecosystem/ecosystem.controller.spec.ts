@@ -312,7 +312,7 @@ describe('EcosystemController', () => {
       expect(result.module).toBeNull();
     });
 
-    it('fetches events and reverses them, defaulting limit to 20 and capping at 50', async () => {
+    it('fetches events newest-first, defaulting limit to 20 and capping at 50', async () => {
       service.getLatest.mockResolvedValue({ l1: [mkProject()], l2: [] });
       fetchMock.mockResolvedValue({
         json: async () => ({
@@ -368,6 +368,121 @@ describe('EcosystemController', () => {
         sender: '',
         data: {},
       });
+    });
+
+    it('merges newest events across all package addresses — the active version may be mid-chain', async () => {
+      service.getLatest.mockResolvedValue({
+        l1: [mkProject({
+          modules: ['mod'],
+          packageAddress: '0x01',
+          latestPackageAddress: '0x02',
+          packageAddresses: ['0x01', '0x02'],
+        })],
+        l2: [],
+      });
+      // Latest address (0x02, probed first) is empty; all events live on 0x01
+      fetchMock
+        .mockResolvedValueOnce({
+          json: async () => ({ data: { events: { nodes: [] } } }),
+        })
+        .mockResolvedValueOnce({
+          json: async () => ({
+            data: {
+              events: {
+                nodes: [
+                  { timestamp: '2026-01-01T00:00:00Z', type: { repr: 'a::b::Old' }, json: {}, sender: { address: '0xs' } },
+                  { timestamp: '2026-01-05T00:00:00Z', type: { repr: 'a::b::New' }, json: {}, sender: { address: '0xs' } },
+                ],
+              },
+            },
+          }),
+        });
+
+      const result = await controller.getProjectEvents('p1');
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(fetchMock.mock.calls[0][1].body).toMatch(/emittingModule: \\?"0x02::mod\\?"/);
+      expect(fetchMock.mock.calls[1][1].body).toMatch(/emittingModule: \\?"0x01::mod\\?"/);
+      // Newest first across chains; module reports the chain that carried it
+      expect(result.events.map((e: any) => e.type)).toEqual(['New', 'Old']);
+      expect(result.module).toBe('0x01::mod');
+    });
+
+    it('caps the merged result at the requested limit across chains', async () => {
+      service.getLatest.mockResolvedValue({
+        l1: [mkProject({
+          modules: ['mod'],
+          packageAddress: '0x01',
+          latestPackageAddress: '0x02',
+          packageAddresses: ['0x01', '0x02'],
+        })],
+        l2: [],
+      });
+      fetchMock
+        .mockResolvedValueOnce({
+          json: async () => ({
+            data: {
+              events: {
+                nodes: [
+                  { timestamp: '2026-01-04T00:00:00Z', type: { repr: 'a::b::B' }, json: {}, sender: { address: '0xs' } },
+                ],
+              },
+            },
+          }),
+        })
+        .mockResolvedValueOnce({
+          json: async () => ({
+            data: {
+              events: {
+                nodes: [
+                  { timestamp: '2026-01-03T00:00:00Z', type: { repr: 'a::b::C' }, json: {}, sender: { address: '0xs' } },
+                  { timestamp: '2026-01-05T00:00:00Z', type: { repr: 'a::b::A' }, json: {}, sender: { address: '0xs' } },
+                ],
+              },
+            },
+          }),
+        });
+
+      const result = await controller.getProjectEvents('p1', '2');
+      expect(fetchMock.mock.calls[0][1].body).toMatch(/last: 2/);
+      expect(result.events.map((e: any) => e.type)).toEqual(['A', 'B']);
+    });
+
+    it('ignores per-chain errors as long as another chain returns events', async () => {
+      service.getLatest.mockResolvedValue({
+        l1: [mkProject({
+          modules: ['mod'],
+          packageAddress: '0x01',
+          latestPackageAddress: '0x02',
+          packageAddresses: ['0x01', '0x02'],
+        })],
+        l2: [],
+      });
+      fetchMock
+        .mockResolvedValueOnce({
+          json: async () => ({ errors: [{ message: 'bad cursor' }] }),
+        })
+        .mockResolvedValueOnce({
+          json: async () => ({
+            data: {
+              events: {
+                nodes: [
+                  { timestamp: '2026-01-01T00:00:00Z', type: { repr: 'a::b::E' }, json: {}, sender: { address: '0xs' } },
+                ],
+              },
+            },
+          }),
+        });
+
+      const result = await controller.getProjectEvents('p1');
+      expect(result.events).toHaveLength(1);
+      expect((result as any).error).toBeUndefined();
+    });
+
+    it('surfaces a network failure as an error payload instead of a 500', async () => {
+      service.getLatest.mockResolvedValue({ l1: [mkProject()], l2: [] });
+      fetchMock.mockRejectedValue(new Error('network down'));
+      const result = await controller.getProjectEvents('p1');
+      expect(result).toEqual({ events: [], module: '0xaa::mod', error: 'network down' });
     });
   });
 
@@ -436,7 +551,7 @@ describe('EcosystemController', () => {
       expect(result.eventTypes[1]).toEqual({ type: 'Deposit', count: 1 });
     });
 
-    it('follows pagination cursors until hasNextPage=false', async () => {
+    it('paginates newest-first, walking before-cursors until hasPreviousPage=false', async () => {
       service.getLatest.mockResolvedValue({
         l1: [mkProject({ modules: ['modA'] })],
         l2: [],
@@ -446,8 +561,8 @@ describe('EcosystemController', () => {
           json: async () => ({
             data: {
               events: {
-                nodes: [{ timestamp: '2026-01-01', type: { repr: 'x::y::E' }, sender: { address: '0xs' } }],
-                pageInfo: { hasNextPage: true, endCursor: 'cur1' },
+                nodes: [{ timestamp: '2026-01-02T00:00:00Z', type: { repr: 'x::y::E' }, sender: { address: '0xs' } }],
+                pageInfo: { hasPreviousPage: true, startCursor: 'cur1' },
               },
             },
           }),
@@ -456,8 +571,8 @@ describe('EcosystemController', () => {
           json: async () => ({
             data: {
               events: {
-                nodes: [{ timestamp: '2026-01-01', type: { repr: 'x::y::E' }, sender: { address: '0xs' } }],
-                pageInfo: { hasNextPage: false, endCursor: null },
+                nodes: [{ timestamp: '2026-01-01T00:00:00Z', type: { repr: 'x::y::E' }, sender: { address: '0xs' } }],
+                pageInfo: { hasPreviousPage: false, startCursor: null },
               },
             },
           }),
@@ -465,8 +580,98 @@ describe('EcosystemController', () => {
 
       const result = await controller.getProjectActivity('p1');
       expect(fetchMock).toHaveBeenCalledTimes(2);
-      expect(fetchMock.mock.calls[1][1].body).toMatch(/after: \\?"cur1\\?"/);
-      expect(result.eventsPerDay).toEqual([{ date: '2026-01-01', count: 2 }]);
+      expect(fetchMock.mock.calls[0][1].body).toMatch(/last: 50/);
+      expect(fetchMock.mock.calls[0][1].body).not.toMatch(/before:/);
+      expect(fetchMock.mock.calls[1][1].body).toMatch(/before: \\?"cur1\\?"/);
+      expect(result.eventsPerDay).toEqual([
+        { date: '2026-01-01', count: 1 },
+        { date: '2026-01-02', count: 1 },
+      ]);
+      expect(result.window).toEqual({ from: '2026-01-01', truncated: false });
+    });
+
+    it('trims the partial oldest day and anchors cumulative when a chain hits the page cap', async () => {
+      service.getLatest.mockResolvedValue({
+        l1: [mkProject({ modules: ['modA'], events: 100 })],
+        l2: [],
+      });
+      // 10 pages (the cap), each an earlier day, all claiming more history —
+      // day 2026-01-01 is only partially fetched and must be trimmed.
+      for (let i = 0; i < 10; i++) {
+        const day = `2026-01-${String(10 - i).padStart(2, '0')}`;
+        fetchMock.mockResolvedValueOnce({
+          json: async () => ({
+            data: {
+              events: {
+                nodes: [
+                  { timestamp: `${day}T10:00:00Z`, type: { repr: 'x::y::E' }, sender: { address: '0xs' } },
+                  { timestamp: `${day}T11:00:00Z`, type: { repr: 'x::y::E' }, sender: { address: '0xs' } },
+                ],
+                pageInfo: { hasPreviousPage: true, startCursor: `cur${i}` },
+              },
+            },
+          }),
+        });
+      }
+
+      const result = await controller.getProjectActivity('p1');
+      expect(fetchMock).toHaveBeenCalledTimes(10);
+      expect(result.window).toEqual({ from: '2026-01-02', truncated: true });
+      expect(result.eventsPerDay).toHaveLength(9);
+      expect(result.eventsPerDay[0]).toEqual({ date: '2026-01-02', count: 2 });
+      // 18 visible events anchored to the lifetime total of 100
+      expect(result.cumulativeEvents[0]).toEqual({ date: '2026-01-02', count: 84 });
+      expect(result.cumulativeEvents[8]).toEqual({ date: '2026-01-10', count: 100 });
+      expect(result.eventTypes).toEqual([{ type: 'E', count: 18 }]);
+    });
+
+    it('keeps partial data when trimming would empty the chart', async () => {
+      service.getLatest.mockResolvedValue({
+        l1: [mkProject({ modules: ['modA'] })],
+        l2: [],
+      });
+      // Every page is the same single day, so the only day is partial.
+      fetchMock.mockResolvedValue({
+        json: async () => ({
+          data: {
+            events: {
+              nodes: [
+                { timestamp: '2026-01-05T10:00:00Z', type: { repr: 'x::y::E' }, sender: { address: '0xs' } },
+                { timestamp: '2026-01-05T11:00:00Z', type: { repr: 'x::y::E' }, sender: { address: '0xs' } },
+              ],
+              pageInfo: { hasPreviousPage: true, startCursor: 'c' },
+            },
+          },
+        }),
+      });
+
+      const result = await controller.getProjectActivity('p1');
+      expect(result.eventsPerDay).toEqual([{ date: '2026-01-05', count: 20 }]);
+      expect(result.window).toEqual({ from: '2026-01-05', truncated: true });
+    });
+
+    it('anchors cumulative to the snapshot lifetime total even without truncation', async () => {
+      service.getLatest.mockResolvedValue({
+        l1: [mkProject({ modules: ['modA'], events: 50 })],
+        l2: [],
+      });
+      fetchMock.mockResolvedValue({
+        json: async () => ({
+          data: {
+            events: {
+              nodes: [
+                { timestamp: '2026-01-01T10:00:00Z', type: { repr: 'x::y::E' }, sender: { address: '0xs' } },
+                { timestamp: '2026-01-01T11:00:00Z', type: { repr: 'x::y::E' }, sender: { address: '0xs' } },
+              ],
+              pageInfo: { hasPreviousPage: false, startCursor: null },
+            },
+          },
+        }),
+      });
+
+      const result = await controller.getProjectActivity('p1');
+      expect(result.cumulativeEvents).toEqual([{ date: '2026-01-01', count: 50 }]);
+      expect(result.window).toEqual({ from: '2026-01-01', truncated: false });
     });
 
     it('breaks pagination when a GraphQL error is returned', async () => {
@@ -481,6 +686,9 @@ describe('EcosystemController', () => {
       const result = await controller.getProjectActivity('p1');
       expect(result.eventsPerDay).toEqual([]);
       expect(fetchMock).toHaveBeenCalledTimes(1);
+      // A page-0 failure means the chain may hold unseen history — never
+      // report it as complete-and-empty
+      expect(result.window).toEqual({ from: null, truncated: true });
     });
 
     it('breaks pagination when fetch itself throws', async () => {
@@ -491,6 +699,37 @@ describe('EcosystemController', () => {
       fetchMock.mockRejectedValueOnce(new Error('network'));
       const result = await controller.getProjectActivity('p1');
       expect(result.eventsPerDay).toEqual([]);
+      expect(result.window).toEqual({ from: null, truncated: true });
+    });
+
+    it('skips the lifetime anchor and flags truncation when modules exceed the probe cap', async () => {
+      service.getLatest.mockResolvedValue({
+        l1: [mkProject({ modules: ['m1', 'm2', 'm3', 'm4'], events: 50 })],
+        l2: [],
+      });
+      fetchMock
+        .mockResolvedValueOnce({
+          json: async () => ({
+            data: {
+              events: {
+                nodes: [
+                  { timestamp: '2026-01-01T10:00:00Z', type: { repr: 'x::y::E' }, sender: { address: '0xs' } },
+                  { timestamp: '2026-01-01T11:00:00Z', type: { repr: 'x::y::E' }, sender: { address: '0xs' } },
+                ],
+                pageInfo: { hasPreviousPage: false, startCursor: null },
+              },
+            },
+          }),
+        })
+        .mockResolvedValue({
+          json: async () => ({ data: { events: { nodes: [], pageInfo: { hasPreviousPage: false, startCursor: null } } } }),
+        });
+
+      const result = await controller.getProjectActivity('p1');
+      // Unprobed module m4 could hold in-window events, so the lifetime
+      // total (50) must not be smeared into the pre-window baseline
+      expect(result.cumulativeEvents).toEqual([{ date: '2026-01-01', count: 2 }]);
+      expect(result.window).toEqual({ from: '2026-01-01', truncated: true });
     });
 
     it('falls back to "unknown" day when event timestamp is missing', async () => {
@@ -575,11 +814,12 @@ describe('EcosystemController', () => {
 
       // 3 packages × 1 module × 1 page each = 3 fetch calls
       expect(fetchMock).toHaveBeenCalledTimes(3);
-      // Each call hits a different emittingModule (one per package address)
+      // Each call hits a different emittingModule; the latest address is
+      // probed first so the address bound can never cut it off
       const bodies = fetchMock.mock.calls.map((c: any) => c[1].body);
-      expect(bodies[0]).toMatch(/emittingModule: \\?"0x01::mod\\?"/);
-      expect(bodies[1]).toMatch(/emittingModule: \\?"0x02::mod\\?"/);
-      expect(bodies[2]).toMatch(/emittingModule: \\?"0x03::mod\\?"/);
+      expect(bodies[0]).toMatch(/emittingModule: \\?"0x03::mod\\?"/);
+      expect(bodies[1]).toMatch(/emittingModule: \\?"0x01::mod\\?"/);
+      expect(bodies[2]).toMatch(/emittingModule: \\?"0x02::mod\\?"/);
       // Events from all 3 packages are unioned
       expect(result.eventsPerDay).toEqual([
         { date: '2026-01-01', count: 1 },
@@ -589,23 +829,26 @@ describe('EcosystemController', () => {
       expect(result.eventTypes.map((e: any) => e.type).sort()).toEqual(['E1', 'E2', 'E3']);
     });
 
-    it('caps the upgrade chain at 5 packages so very-long chains stay bounded', async () => {
+    it('caps the probed addresses at 40 so aggregate deployer buckets stay bounded', async () => {
       service.getLatest.mockResolvedValue({
         l1: [mkProject({
           modules: ['mod'],
-          packageAddresses: ['0x01', '0x02', '0x03', '0x04', '0x05', '0x06', '0x07'],
+          packageAddresses: Array.from({ length: 45 }, (_, i) => `0x${String(i + 1).padStart(2, '0')}`),
         })],
         l2: [],
       });
       fetchMock.mockResolvedValue({
-        json: async () => ({ data: { events: { nodes: [], pageInfo: { hasNextPage: false, endCursor: null } } } }),
+        json: async () => ({ data: { events: { nodes: [], pageInfo: { hasPreviousPage: false, startCursor: null } } } }),
       });
-      await controller.getProjectActivity('p1');
-      // 5 packages × 1 module × 1 page each = 5 fetch calls (cap at 5, not 7)
-      expect(fetchMock).toHaveBeenCalledTimes(5);
+      const result = await controller.getProjectActivity('p1');
+      // 40 packages × 1 module × 1 page each (cap at 40, not 45; the default
+      // latest/anchor address 0xaa counts as the first probed slot)
+      expect(fetchMock).toHaveBeenCalledTimes(40);
+      // Unprobed addresses mean the window can't claim completeness
+      expect(result.window.truncated).toBe(true);
     });
 
-    it('falls back to latestPackageAddress when packageAddresses is empty (legacy / unattributed shape)', async () => {
+    it('probes latest and anchor addresses when packageAddresses is empty (legacy / unattributed shape)', async () => {
       service.getLatest.mockResolvedValue({
         l1: [mkProject({
           modules: ['mod'],
@@ -616,12 +859,13 @@ describe('EcosystemController', () => {
         l2: [],
       });
       fetchMock.mockResolvedValue({
-        json: async () => ({ data: { events: { nodes: [], pageInfo: { hasNextPage: false, endCursor: null } } } }),
+        json: async () => ({ data: { events: { nodes: [], pageInfo: { hasPreviousPage: false, startCursor: null } } } }),
       });
       await controller.getProjectActivity('p1');
-      // Falls back to latestPackageAddress; 1 fetch call
-      expect(fetchMock).toHaveBeenCalledTimes(1);
+      // Both distinct addresses probed, latest first
+      expect(fetchMock).toHaveBeenCalledTimes(2);
       expect(fetchMock.mock.calls[0][1].body).toMatch(/emittingModule: \\?"0xlatest::mod\\?"/);
+      expect(fetchMock.mock.calls[1][1].body).toMatch(/emittingModule: \\?"0xfirst::mod\\?"/);
     });
 
     it('falls back to packageAddress when latestPackageAddress is null', async () => {

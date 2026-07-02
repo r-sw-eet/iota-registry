@@ -2,9 +2,86 @@ import { BadRequestException, Controller, Get, Post, Param, Query, NotFoundExcep
 import { EcosystemService } from './ecosystem.service';
 import { ALL_TEAMS } from './teams';
 
+// IOTA GraphQL caps every Connection at 50 nodes (`plans/limits.md`).
+const EVENTS_PAGE_SIZE = 50;
+const MAX_EVENT_PAGES = 10;
+// Aggregate deployer buckets carry 100+ addresses; bound the probe fan-out.
+const MAX_PROBED_ADDRESSES = 40;
+const MAX_PROBED_MODULES = 3;
+const CHAIN_CONCURRENCY = 15;
+
 @Controller('ecosystem')
 export class EcosystemController {
   constructor(private ecosystemService: EcosystemService) {}
+
+  /**
+   * Candidate package addresses for on-chain event queries. Events bind to
+   * the package version the caller actually invoked — for TWIN that is a
+   * mid-chain version, neither the first nor the latest address — so every
+   * version must be probed. Latest/primary go first so a probe bound never
+   * cuts them off. Callers apply MAX_PROBED_ADDRESSES themselves so they
+   * can tell a complete probe from a capped one.
+   */
+  private packageAddressesOf(project: any): string[] {
+    const addrs = new Set<string>(
+      [
+        project.latestPackageAddress,
+        project.packageAddress,
+        ...(project.packageAddresses || []),
+      ].filter(Boolean),
+    );
+    return [...addrs];
+  }
+
+  private async runLimited<T>(tasks: (() => Promise<T>)[], limit: number): Promise<T[]> {
+    const results: T[] = new Array(tasks.length);
+    let next = 0;
+    const workers = Array.from({ length: Math.min(limit, tasks.length) }, async () => {
+      while (next < tasks.length) {
+        const i = next++;
+        results[i] = await tasks[i]();
+      }
+    });
+    await Promise.all(workers);
+    return results;
+  }
+
+  /**
+   * Fetch a chain's events newest-first: `last:` pages walking `before`
+   * cursors backward, so an active chain past the page cap loses its oldest
+   * history instead of freezing at its first 500 events. `truncated` marks
+   * a chain whose history may be incomplete — page cap or a failed request
+   * (a page-0 failure means the whole chain is missing, not that it's empty).
+   */
+  private async fetchChainNewestFirst(
+    emittingModule: string,
+  ): Promise<{ events: any[]; truncated: boolean }> {
+    const events: any[] = [];
+    let cursor: string | null = null;
+    for (let page = 0; page < MAX_EVENT_PAGES; page++) {
+      const beforeClause = cursor ? `, before: "${cursor}"` : '';
+      try {
+        const res = await fetch(this.ecosystemService.getGraphqlUrl(), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            query: `{ events(filter: { emittingModule: "${emittingModule}" }, last: ${EVENTS_PAGE_SIZE}${beforeClause}) { nodes { timestamp type { repr } sender { address } } pageInfo { hasPreviousPage startCursor } } }`,
+          }),
+        });
+        const json: any = await res.json();
+        if (json.errors?.length) break;
+        const nodes = json.data?.events?.nodes || [];
+        events.push(...nodes);
+        const pageInfo = json.data?.events?.pageInfo;
+        if (!pageInfo?.hasPreviousPage) return { events, truncated: false };
+        cursor = pageInfo.startCursor;
+      } catch {
+        break;
+      }
+    }
+    // Exited without reaching the history's start: page cap or failed request.
+    return { events, truncated: true };
+  }
 
   /**
    * Trigger a fresh ecosystem scan out-of-band (without waiting for the 2h
@@ -213,20 +290,26 @@ export class EcosystemController {
     const project = all.find((p: any) => p.slug === slug);
     if (!project) throw new NotFoundException(`Project "${slug}" not found`);
 
-    const pkgAddr = project.latestPackageAddress || project.packageAddress;
-    if (!pkgAddr || !project.modules?.length) {
+    const addrs = this.packageAddressesOf(project).slice(0, MAX_PROBED_ADDRESSES);
+    if (!addrs.length || !project.modules?.length) {
       return { events: [], module: null, note: 'No on-chain package for this project' };
     }
 
     const mod = project.modules[0];
-    const emittingModule = `${pkgAddr}::${mod}`;
+    const primaryChain = `${addrs[0]}::${mod}`;
     const n = Math.min(Number(limit) || 20, 50);
 
-    const res = await fetch(this.ecosystemService.getGraphqlUrl(), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        query: `{
+    // Events bind to whichever package version the caller invoked, so every
+    // address must be probed — the latest is often the empty one (TWIN).
+    const chains = addrs.map((a: string) => `${a}::${mod}`);
+    const pages = await this.runLimited(
+      chains.map((emittingModule) => async () => {
+        try {
+          const res = await fetch(this.ecosystemService.getGraphqlUrl(), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              query: `{
           events(filter: { emittingModule: "${emittingModule}" }, last: ${n}) {
             nodes {
               timestamp
@@ -236,15 +319,32 @@ export class EcosystemController {
             }
           }
         }`,
+            }),
+          });
+          const json: any = await res.json();
+          if (json.errors?.length) {
+            return { emittingModule, nodes: [] as any[], error: json.errors[0].message as string };
+          }
+          return { emittingModule, nodes: (json.data?.events?.nodes || []) as any[], error: null };
+        } catch (e: any) {
+          // One flaky chain must not 500 the merged response
+          return { emittingModule, nodes: [] as any[], error: e?.message || 'fetch failed' };
+        }
       }),
-    });
+      CHAIN_CONCURRENCY,
+    );
 
-    const json: any = await res.json();
-    if (json.errors?.length) {
-      return { events: [], module: emittingModule, error: json.errors[0].message };
+    const merged = pages
+      .flatMap((p) => p.nodes.map((node: any) => ({ node, emittingModule: p.emittingModule })))
+      .sort((a, b) => (b.node.timestamp || '').localeCompare(a.node.timestamp || ''))
+      .slice(0, n);
+
+    if (!merged.length) {
+      const firstError = pages.find((p) => p.error)?.error;
+      if (firstError) return { events: [], module: primaryChain, error: firstError };
     }
 
-    const events = (json.data?.events?.nodes || []).reverse().map((e: any) => ({
+    const events = merged.map(({ node: e }) => ({
       timestamp: e.timestamp,
       type: e.type?.repr?.split('::').pop() || 'Unknown',
       typeFull: e.type?.repr || '',
@@ -252,7 +352,7 @@ export class EcosystemController {
       data: e.json || {},
     }));
 
-    return { events, module: emittingModule };
+    return { events, module: merged[0]?.emittingModule || primaryChain };
   }
 
   @Get('project/:slug/activity')
@@ -272,60 +372,52 @@ export class EcosystemController {
       tvlHistory: [],
     };
 
-    // Fetch events from GraphQL for L1 projects. IOTA's `emittingModule`
-    // filter is strict per package address, so multi-package projects (TWIN
-    // ImmutableProof = 6 versions of `verifiable_storage`) need to be
-    // queried per address — events emitted by older packages bind to those
-    // packages' addresses, not the latest. Cap the cross-product so larger
-    // upgrade chains don't blow out the request: top 5 packages × top 3
-    // modules × 10 pages = ≤150 GraphQL calls.
-    const pkgAddrs: string[] = (project.packageAddresses && project.packageAddresses.length)
-      ? project.packageAddresses.slice(0, 5)
-      : [project.latestPackageAddress || project.packageAddress].filter(Boolean) as string[];
+    // IOTA's `emittingModule` filter is strict per package address, so every
+    // version of a multi-package project must be queried — events bind to
+    // whichever version the caller invoked (for TWIN, a mid-chain one).
+    const allAddrs = this.packageAddressesOf(project);
+    const pkgAddrs = allAddrs.slice(0, MAX_PROBED_ADDRESSES);
     if (pkgAddrs.length && project.modules?.length) {
-      // Each (package, module) chain paginates internally (cursor depends
-      // on previous page), but chains are independent of each other — so
-      // run them in parallel. IOTA GraphQL tolerates ≥20 parallel workers
-      // (`plans/limits.md`); our worst case is 5 × 3 = 15.
-      const fetchChain = async (emittingModule: string): Promise<any[]> => {
-        const events: any[] = [];
-        let cursor: string | null = null;
-        for (let page = 0; page < 10; page++) {
-          const afterClause = cursor ? `, after: "${cursor}"` : '';
-          try {
-            const res = await fetch(this.ecosystemService.getGraphqlUrl(), {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                query: `{ events(filter: { emittingModule: "${emittingModule}" }, first: 50${afterClause}) { nodes { timestamp type { repr } sender { address } } pageInfo { hasNextPage endCursor } } }`,
-              }),
-            });
-            const json: any = await res.json();
-            if (json.errors?.length) break;
-            const nodes = json.data?.events?.nodes || [];
-            events.push(...nodes);
-            if (!json.data?.events?.pageInfo?.hasNextPage) break;
-            cursor = json.data.events.pageInfo.endCursor;
-          } catch {
-            break;
-          }
-        }
-        return events;
-      };
-
+      // Coverage matters below: only when every address and module was probed
+      // can un-fetched events be proven older than the visible window.
+      const scopeComplete =
+        allAddrs.length <= MAX_PROBED_ADDRESSES && project.modules.length <= MAX_PROBED_MODULES;
       const tuples: string[] = [];
       for (const pkgAddr of pkgAddrs) {
-        for (const mod of project.modules.slice(0, 3)) {
+        for (const mod of project.modules.slice(0, MAX_PROBED_MODULES)) {
           tuples.push(`${pkgAddr}::${mod}`);
         }
       }
-      const allEvents: any[] = (await Promise.all(tuples.map(fetchChain))).flat();
+      // Chains paginate internally but are independent of each other; IOTA
+      // GraphQL tolerates ≥20 parallel workers (`plans/limits.md`).
+      const chains = await this.runLimited(
+        tuples.map((t) => () => this.fetchChainNewestFirst(t)),
+        CHAIN_CONCURRENCY,
+      );
+      const allEvents: any[] = chains.flatMap((c) => c.events);
 
-      // Group by day
+      // A truncated chain is missing events older than its fetch window, so
+      // its oldest fetched day is only partially covered — drop merged
+      // buckets up to the newest such partial day so every shown day is
+      // complete. If that would empty the chart, show the partial data.
+      let partialDay = '';
+      for (const c of chains) {
+        if (!c.truncated) continue;
+        const oldest = c.events.reduce((min: string, e: any) => {
+          const d = e.timestamp?.slice(0, 10);
+          return d && (!min || d < min) ? d : min;
+        }, '');
+        if (oldest > partialDay) partialDay = oldest;
+      }
+      const kept = partialDay
+        ? allEvents.filter((e) => (e.timestamp?.slice(0, 10) || 'unknown') > partialDay)
+        : allEvents;
+      const visible = kept.length ? kept : allEvents;
+
       const byDay = new Map<string, { count: number; senders: Set<string>; }>();
       const typeCounts = new Map<string, number>();
 
-      for (const evt of allEvents) {
+      for (const evt of visible) {
         const day = evt.timestamp?.slice(0, 10) || 'unknown';
         const entry = byDay.get(day) || { count: 0, senders: new Set() };
         entry.count++;
@@ -340,7 +432,12 @@ export class EcosystemController {
       result.eventsPerDay = sortedDays.map(([date, d]) => ({ date, count: d.count }));
       result.sendersPerDay = sortedDays.map(([date, d]) => ({ date, count: d.senders.size }));
 
-      let cumulative = 0;
+      // Anchor the curve to the snapshot's lifetime total so it stays
+      // "cumulative since genesis" when the window is truncated — but only
+      // when the probe covered the full scope; otherwise unprobed chains'
+      // events could be in-window and the anchor would inflate the start.
+      const lifetimeAnchor = scopeComplete ? (project.events || 0) : allEvents.length;
+      let cumulative = Math.max(0, lifetimeAnchor - visible.length);
       result.cumulativeEvents = sortedDays.map(([date, d]) => {
         cumulative += d.count;
         return { date, count: cumulative };
@@ -349,6 +446,11 @@ export class EcosystemController {
       result.eventTypes = [...typeCounts.entries()]
         .sort((a, b) => b[1] - a[1])
         .map(([type, count]) => ({ type, count }));
+
+      result.window = {
+        from: sortedDays.length ? sortedDays[0][0] : null,
+        truncated: chains.some((c) => c.truncated) || !scopeComplete,
+      };
     }
 
     // Fetch TVL history from DefiLlama
