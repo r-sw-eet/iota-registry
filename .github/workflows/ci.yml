@@ -63,7 +63,7 @@ jobs:
         env:
           NUXT_PUBLIC_API_BASE: https://iota-trade-scanner.net/api/v1
       - name: Upload built site
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: website-v2-build
           path: projects/website-v2/.output/public
@@ -80,7 +80,7 @@ jobs:
       cancel-in-progress: false
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v5
+      - uses: actions/download-artifact@v8
         with:
           name: website-v2-build
           path: site
