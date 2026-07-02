@@ -4,19 +4,19 @@ import { Document } from 'mongoose';
 @Schema({ timestamps: true })
 export class ProjectSenders extends Document {
   @Prop({ required: true, index: true })
-  packageAddress: string;
+  packageAddress!: string;
 
   @Prop({ required: true })
-  module: string;
+  module!: string;
 
   @Prop({ type: [String], default: [] })
-  senders: string[];
+  senders!: string[];
 
   @Prop({ type: String, default: null })
-  cursor: string | null;
+  cursor!: string | null;
 
   @Prop({ default: 0 })
-  eventsScanned: number;
+  eventsScanned!: number;
 }
 
 export const ProjectSendersSchema = SchemaFactory.createForClass(ProjectSenders);

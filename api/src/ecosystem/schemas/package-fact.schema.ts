@@ -25,27 +25,27 @@ import {
 export class PackageFactDoc extends Document {
   /** FK to the owning `onchainsnapshots._id`. Hot read path: `find({ snapshotId })`. */
   @Prop({ type: SchemaTypes.ObjectId, required: true, index: true })
-  snapshotId: Types.ObjectId;
+  snapshotId!: Types.ObjectId;
 
   /** Redundant with the parent's field but carried here so single-doc reads don't need a join. */
   @Prop({ type: String, enum: ['mainnet', 'testnet', 'devnet'], required: true, index: true })
-  network: string;
+  network!: string;
 
   // --- The following fields mirror OnchainSnapshot.PackageFact 1:1. Keep in sync. ---
 
-  @Prop({ required: true }) address: string;
-  @Prop({ type: String, default: null }) deployer: string | null;
-  @Prop({ required: true, default: 0 }) storageRebateNanos: number;
-  @Prop({ type: [String], default: [] }) modules: string[];
-  @Prop({ type: [ModuleMetrics], default: [] }) moduleMetrics: ModuleMetrics[];
-  @Prop({ required: true, default: 0 }) objectHolderCount: number;
-  @Prop({ required: true, default: 0 }) objectCount: number;
-  @Prop({ required: true, default: 0 }) transactions: number;
-  @Prop({ required: true, default: false }) transactionsCapped: boolean;
-  @Prop({ type: [ObjectTypeCount], default: [] }) objectTypeCounts: ObjectTypeCount[];
-  @Prop({ type: FingerprintSampleDoc, default: null }) fingerprint: FingerprintSampleDoc | null;
-  @Prop({ type: Date, default: null }) publishedAt: Date | null;
-  @Prop({ type: Date, default: null }) lastProbedAt: Date | null;
+  @Prop({ required: true }) address!: string;
+  @Prop({ type: String, default: null }) deployer!: string | null;
+  @Prop({ required: true, default: 0 }) storageRebateNanos!: number;
+  @Prop({ type: [String], default: [] }) modules!: string[];
+  @Prop({ type: [ModuleMetrics], default: [] }) moduleMetrics!: ModuleMetrics[];
+  @Prop({ required: true, default: 0 }) objectHolderCount!: number;
+  @Prop({ required: true, default: 0 }) objectCount!: number;
+  @Prop({ required: true, default: 0 }) transactions!: number;
+  @Prop({ required: true, default: false }) transactionsCapped!: boolean;
+  @Prop({ type: [ObjectTypeCount], default: [] }) objectTypeCounts!: ObjectTypeCount[];
+  @Prop({ type: FingerprintSampleDoc, default: null }) fingerprint!: FingerprintSampleDoc | null;
+  @Prop({ type: Date, default: null }) publishedAt!: Date | null;
+  @Prop({ type: Date, default: null }) lastProbedAt!: Date | null;
 
   /**
    * Testnet workshop/tutorial-scaffold marker. Set at probe time when
@@ -58,7 +58,7 @@ export class PackageFactDoc extends Document {
    * `false` so old facts and non-tutorial packages decode correctly.
    * See `plans/plan_testnet_tutorial_filter.md`.
    */
-  @Prop({ type: Boolean, default: false, index: true }) isTutorial: boolean;
+  @Prop({ type: Boolean, default: false, index: true }) isTutorial!: boolean;
 }
 
 export const PackageFactDocSchema = SchemaFactory.createForClass(PackageFactDoc);

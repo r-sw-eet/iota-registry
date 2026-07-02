@@ -41,13 +41,13 @@ export class TestnetCursor extends Document<string, any, any> {
    * sweeps over container logs can correlate "Nth tick since boot" with
    * outcomes.
    */
-  @Prop({ type: Number, required: true, default: 0 }) tickCounter: number;
+  @Prop({ type: Number, required: true, default: 0 }) tickCounter!: number;
 
   /** Diagnostic: when the most recent tick completed (wall-clock). */
-  @Prop({ type: Date, default: null }) lastTickAt: Date | null;
+  @Prop({ type: Date, default: null }) lastTickAt!: Date | null;
 
   /** Diagnostic: how many packages the most recent tick freshly probed. */
-  @Prop({ type: Number, default: 0 }) lastTickPackagesProbed: number;
+  @Prop({ type: Number, default: 0 }) lastTickPackagesProbed!: number;
 }
 
 export const TestnetCursorSchema: MongooseSchema<TestnetCursor> = SchemaFactory.createForClass(TestnetCursor);

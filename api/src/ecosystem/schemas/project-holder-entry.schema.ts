@@ -24,15 +24,15 @@ import { Document } from 'mongoose';
 @Schema({ timestamps: true, collection: 'project_holder_entries' })
 export class ProjectHolderEntry extends Document {
   @Prop({ required: true })
-  packageAddress: string;
+  packageAddress!: string;
 
   /** Fully-qualified Move struct type — matches the `type` field in `ProjectHolders`. */
   @Prop({ required: true })
-  type: string;
+  type!: string;
 
   /** Lowercased `IotaAddress` of the owning wallet. */
   @Prop({ required: true })
-  address: string;
+  address!: string;
 }
 
 export const ProjectHolderEntrySchema = SchemaFactory.createForClass(ProjectHolderEntry);

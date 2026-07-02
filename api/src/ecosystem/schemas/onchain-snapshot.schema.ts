@@ -32,13 +32,13 @@ import { Document } from 'mongoose';
  */
 @Schema({ _id: false })
 export class ModuleMetrics {
-  @Prop({ required: true }) module: string;
+  @Prop({ required: true }) module!: string;
 
   /** Total events emitted from this (package, module) since package deploy. */
-  @Prop({ required: true }) events: number;
+  @Prop({ required: true }) events!: number;
 
   /** True if `countEvents` hit its page cap — the `events` field is a floor. */
-  @Prop({ required: true, default: false }) eventsCapped: boolean;
+  @Prop({ required: true, default: false }) eventsCapped!: boolean;
 
   /**
    * GraphQL `endCursor` of the newest event we've counted for this
@@ -55,7 +55,7 @@ export class ModuleMetrics {
    * change order, never re-cursor. See `plans/limits.md` § Events
    * pagination for the empirical probe.
    */
-  @Prop({ type: String, default: null }) eventsCursor: string | null;
+  @Prop({ type: String, default: null }) eventsCursor!: string | null;
 
   /**
    * Unique sender addresses seen across this (package, module). Derived at
@@ -63,7 +63,7 @@ export class ModuleMetrics {
    * here for point-in-time delta queries without needing to rehydrate
    * every scan's `ProjectSenders` state.
    */
-  @Prop({ required: true, default: 0 }) uniqueSenders: number;
+  @Prop({ required: true, default: 0 }) uniqueSenders!: number;
 
   /**
    * Public entry-function names exposed by this module (filtered to
@@ -75,7 +75,7 @@ export class ModuleMetrics {
    * Empty array on snapshots predating this field and on modules with no
    * public entry functions.
    */
-  @Prop({ type: [String], default: [] }) entryFunctions: string[];
+  @Prop({ type: [String], default: [] }) entryFunctions!: string[];
 
   /**
    * Short names of distinct event-struct types this module emits, sampled
@@ -93,7 +93,7 @@ export class ModuleMetrics {
    * Empty array on snapshots predating this field and on modules that
    * emit no events or whose event sample page failed.
    */
-  @Prop({ type: [String], default: [] }) eventTypes: string[];
+  @Prop({ type: [String], default: [] }) eventTypes!: string[];
 }
 
 /**
@@ -113,7 +113,7 @@ export class ModuleMetrics {
 @Schema({ _id: false })
 export class ObjectTypeCount {
   /** Fully-qualified Move struct type — e.g. `0x35fa…::otterfly_1::OtterFly1NFT`. */
-  @Prop({ required: true }) type: string;
+  @Prop({ required: true }) type!: string;
 
   /**
    * Distinct wallet addresses currently observed holding at least one live
@@ -124,7 +124,7 @@ export class ObjectTypeCount {
    * Receivers who flip out before any scan catches them aren't counted; for
    * "ever-received" semantics use `ProjectSenders` (TX initiators) instead.
    */
-  @Prop({ required: true, default: 0 }) objectHolderCount: number;
+  @Prop({ required: true, default: 0 }) objectHolderCount!: number;
 
   /**
    * Count of `owner.__typename === 'Parent'` observations during the holder walk —
@@ -133,10 +133,10 @@ export class ObjectTypeCount {
    * on the detail page as "Listed on marketplace" so the gap between live-object
    * count and `objectHolderCount` is visible rather than silent.
    */
-  @Prop({ required: true, default: 0 }) listedCount: number;
+  @Prop({ required: true, default: 0 }) listedCount!: number;
 
   /** True if the holder walk hit its per-scan page cap — `objectHolderCount` is then a floor. */
-  @Prop({ required: true, default: false }) objectHolderCountCapped: boolean;
+  @Prop({ required: true, default: false }) objectHolderCountCapped!: boolean;
 
   /**
    * Live Move-object count for this type as of capture — total nodes returned
@@ -148,37 +148,37 @@ export class ObjectTypeCount {
    * Empty/undefined on snapshots predating this field — growth endpoint
    * treats as "unknown for that interval", not zero.
    */
-  @Prop({ required: true, default: 0 }) objectCount: number;
+  @Prop({ required: true, default: 0 }) objectCount!: number;
 
   /** True if `countObjectsForType` hit its per-scan page cap — `objectCount` is then a floor (UI renders as `<n>+`). */
-  @Prop({ required: true, default: false }) objectCountCapped: boolean;
+  @Prop({ required: true, default: false }) objectCountCapped!: boolean;
 }
 
 @Schema({ _id: false })
 export class FingerprintSampleDoc {
   /** Fully-qualified Move type of the probed object, for provenance. */
-  @Prop({ type: String, default: null }) sampledObjectType: string | null;
+  @Prop({ type: String, default: null }) sampledObjectType!: string | null;
 
   /** `key:value` pairs extracted from the sampled object (tag, name, url, …). */
-  @Prop({ type: [String], default: [] }) identifiers: string[];
+  @Prop({ type: [String], default: [] }) identifiers!: string[];
 }
 
 @Schema({ _id: false })
 export class PackageFact {
   /** Stable on-chain identifier. Primary key for delta joins between snapshots. */
-  @Prop({ required: true }) address: string;
+  @Prop({ required: true }) address!: string;
 
   /** First-publisher address (lowercased). `null` for packages without a previousTransactionBlock sender (framework / legacy). */
-  @Prop({ type: String, default: null }) deployer: string | null;
+  @Prop({ type: String, default: null }) deployer!: string | null;
 
   /** Storage deposit set at publish; static per package (in nanos). */
-  @Prop({ required: true, default: 0 }) storageRebateNanos: number;
+  @Prop({ required: true, default: 0 }) storageRebateNanos!: number;
 
   /** Module name list — changes only on upgrade. */
-  @Prop({ type: [String], default: [] }) modules: string[];
+  @Prop({ type: [String], default: [] }) modules!: string[];
 
   /** Cumulative per-module counters. One entry per currently-present module. */
-  @Prop({ type: [ModuleMetrics], default: [] }) moduleMetrics: ModuleMetrics[];
+  @Prop({ type: [ModuleMetrics], default: [] }) moduleMetrics!: ModuleMetrics[];
 
   /**
    * Sum of `objectHolderCount` across this package's per-type entries — i.e.
@@ -188,7 +188,7 @@ export class PackageFact {
    * see `project.uniqueHolders` (computed via aggregation over
    * `project_holder_entries` at classify time).
    */
-  @Prop({ required: true, default: 0 }) objectHolderCount: number;
+  @Prop({ required: true, default: 0 }) objectHolderCount!: number;
 
   /**
    * Sum of `objectCount` across this package's per-type entries — total live
@@ -196,7 +196,7 @@ export class PackageFact {
    * recompute every scan (see `ObjectTypeCount.objectCount` for why a cursor
    * model wouldn't work). Empty/undefined on snapshots predating Phase 2.
    */
-  @Prop({ required: true, default: 0 }) objectCount: number;
+  @Prop({ required: true, default: 0 }) objectCount!: number;
 
   /**
    * Cumulative MoveCall TX count addressing this package since deploy.
@@ -206,10 +206,10 @@ export class PackageFact {
    * cursor state. Package-level (not per-module) per
    * `plans/plan_tx_count.md § Design decision`.
    */
-  @Prop({ required: true, default: 0 }) transactions: number;
+  @Prop({ required: true, default: 0 }) transactions!: number;
 
   /** True if pagination hit its per-scan page cap — the `transactions` field is a floor. */
-  @Prop({ required: true, default: false }) transactionsCapped: boolean;
+  @Prop({ required: true, default: false }) transactionsCapped!: boolean;
 
   /**
    * Per-type holder counts for every `key`-able struct type declared by this
@@ -220,14 +220,14 @@ export class PackageFact {
    * array on old snapshots predating this field — treated as "unknown for
    * that interval" by the growth endpoint.
    */
-  @Prop({ type: [ObjectTypeCount], default: [] }) objectTypeCounts: ObjectTypeCount[];
+  @Prop({ type: [ObjectTypeCount], default: [] }) objectTypeCounts!: ObjectTypeCount[];
 
   /**
    * Raw fingerprint probe output. Stored rather than matched so classification
    * can re-run at read time against the current registry — a new fingerprint
    * rule added today retroactively classifies old snapshots.
    */
-  @Prop({ type: FingerprintSampleDoc, default: null }) fingerprint: FingerprintSampleDoc | null;
+  @Prop({ type: FingerprintSampleDoc, default: null }) fingerprint!: FingerprintSampleDoc | null;
 
   /**
    * ISO timestamp of the TX that published this package — derived from
@@ -243,7 +243,7 @@ export class PackageFact {
    * previous TX, and on snapshots predating this field — growth endpoint
    * treats as "unknown for that interval".
    */
-  @Prop({ type: Date, default: null }) publishedAt: Date | null;
+  @Prop({ type: Date, default: null }) publishedAt!: Date | null;
 
   /**
    * Testnet-only: when this package was last freshly probed by the
@@ -257,7 +257,7 @@ export class PackageFact {
    * `createdAt` already answers "when last probed") and on pre-4c
    * snapshots. Invariant: never rewinds to null once set (plan invariant 7).
    */
-  @Prop({ type: Date, default: null }) lastProbedAt: Date | null;
+  @Prop({ type: Date, default: null }) lastProbedAt!: Date | null;
 
   /**
    * Testnet workshop/tutorial-scaffold marker. Mirror of the field on
@@ -266,7 +266,7 @@ export class PackageFact {
    * `testnet-tutorial-signatures.ts`. Always `false` on mainnet/devnet.
    * See `plans/plan_testnet_tutorial_filter.md`.
    */
-  @Prop({ type: Boolean, default: false }) isTutorial: boolean;
+  @Prop({ type: Boolean, default: false }) isTutorial!: boolean;
 }
 
 @Schema({ timestamps: true, collection: 'onchainsnapshots' })
@@ -282,7 +282,7 @@ export class OnchainSnapshot extends Document {
    * filter until the one-shot backfill sets `'mainnet'` on all existing rows.
    */
   @Prop({ type: String, enum: ['mainnet', 'testnet', 'devnet'], default: 'mainnet', required: true, index: true })
-  network: string;
+  network!: string;
 
   /**
    * Capture lifecycle marker for resumable mainnet scans. `'partial'` means
@@ -308,7 +308,7 @@ export class OnchainSnapshot extends Document {
    * index below).
    */
   @Prop({ type: String, enum: ['partial', 'complete'], default: 'complete', index: true })
-  captureStage: 'partial' | 'complete';
+  captureStage!: 'partial' | 'complete';
 
   /**
    * GraphQL paginator cursor held by a `captureStage: 'partial'` doc — the
@@ -317,16 +317,16 @@ export class OnchainSnapshot extends Document {
    * (resume meaningless once promoted) and while a capture hasn't yet
    * crossed its first checkpoint window.
    */
-  @Prop({ type: String, default: null }) captureProgressCursor: string | null;
+  @Prop({ type: String, default: null }) captureProgressCursor!: string | null;
 
   /** Summed storageRebateNanos across every package. Convenience for network-total queries. */
-  @Prop({ required: true, default: 0 }) totalStorageRebateNanos: number;
+  @Prop({ required: true, default: 0 }) totalStorageRebateNanos!: number;
 
   /** Network-level TX total (all packages + framework calls), from SnapshotModule's latest epoch. */
-  @Prop({ required: true, default: 0 }) networkTxTotal: number;
+  @Prop({ required: true, default: 0 }) networkTxTotal!: number;
 
   /** Per-epoch TX rate map (epoch → tx/s). Kept for continuity with the old schema. */
-  @Prop({ type: Object, default: {} }) txRates: Record<string, number>;
+  @Prop({ type: Object, default: {} }) txRates!: Record<string, number>;
 
   /**
    * Wall-clock milliseconds the `capture()` body took (from guard-acquire to
@@ -340,7 +340,7 @@ export class OnchainSnapshot extends Document {
    *   - >90 min → ERROR (post-TX alarm; port events/senders per shared follow-up)
    *   - >100 min → ERROR (post-Obj alarm; Obj schema work must wait)
    */
-  @Prop({ type: Number, default: null }) captureDurationMs: number | null;
+  @Prop({ type: Number, default: null }) captureDurationMs!: number | null;
 
   createdAt?: Date;
 }

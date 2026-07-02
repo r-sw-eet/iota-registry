@@ -12,13 +12,13 @@ import { Document } from 'mongoose';
 @Schema({ timestamps: true, collection: 'project_sender_entries' })
 export class ProjectSender extends Document {
   @Prop({ required: true })
-  packageAddress: string;
+  packageAddress!: string;
 
   @Prop({ required: true })
-  module: string;
+  module!: string;
 
   @Prop({ required: true })
-  address: string;
+  address!: string;
 }
 
 export const ProjectSenderSchema = SchemaFactory.createForClass(ProjectSender);
