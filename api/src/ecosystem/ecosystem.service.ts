@@ -1,8 +1,7 @@
 import { Injectable, Logger, OnModuleInit, OnApplicationShutdown } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Cron } from '@nestjs/schedule';
-import { Model, Types } from 'mongoose';
-import { BSON } from 'bson';
+import { Model, Types, mongo } from 'mongoose';
 import { createHash } from 'crypto';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import * as os from 'node:os';
@@ -28,6 +27,10 @@ import { AlertsService } from '../alerts/alerts.service';
 import { ALL_PROJECTS, ProjectDefinition, Category, Subcategory } from './projects';
 import { ALL_TEAMS, Team, getTeam } from './teams';
 import { isTutorialModuleSet } from './testnet-tutorial-signatures';
+
+// Use the driver's own BSON so ObjectId instances and the size calculator
+// always come from the same bson major (a hoisted standalone copy can drift).
+const { BSON } = mongo;
 
 /**
  * Whether a project has any synchronous match criterion — i.e. can be matched
@@ -684,7 +687,7 @@ export class EcosystemService implements OnModuleInit, OnApplicationShutdown {
     // don't need to know the facts live in a separate collection.
     return docs.map((d) => {
       /* eslint-disable @typescript-eslint/no-unused-vars */
-      const { _id, snapshotId, network, createdAt, updatedAt, ...rest } = d as Record<string, unknown>;
+      const { _id, snapshotId, network, createdAt, updatedAt, ...rest } = d as unknown as Record<string, unknown>;
       /* eslint-enable @typescript-eslint/no-unused-vars */
       return rest as unknown as PackageFact;
     });
@@ -4720,7 +4723,7 @@ export class EcosystemService implements OnModuleInit, OnApplicationShutdown {
    * `snapshotId` (unique); overwrites in place — no version history.
    */
   private async persistClassified(
-    snapshotId: unknown,
+    snapshotId: Types.ObjectId,
     view: Awaited<ReturnType<EcosystemService['classifyFromRaw']>>,
     classifyDurationMs: number,
     // Propagated from the raw snapshot (`OnchainSnapshot.network`), not the

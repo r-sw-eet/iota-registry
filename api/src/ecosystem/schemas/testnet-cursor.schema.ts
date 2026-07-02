@@ -1,5 +1,5 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { Document } from 'mongoose';
+import { Document, Schema as MongooseSchema } from 'mongoose';
 
 /**
  * Persistent state for the testnet two-pipeline capture (Phase 2 of
@@ -50,4 +50,4 @@ export class TestnetCursor extends Document<string, any, any> {
   @Prop({ type: Number, default: 0 }) lastTickPackagesProbed: number;
 }
 
-export const TestnetCursorSchema = SchemaFactory.createForClass(TestnetCursor);
+export const TestnetCursorSchema: MongooseSchema<TestnetCursor> = SchemaFactory.createForClass(TestnetCursor);
