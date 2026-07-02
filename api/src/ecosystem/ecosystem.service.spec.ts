@@ -7132,6 +7132,11 @@ describe('EcosystemService', () => {
     };
 
     beforeEach(() => {
+      // Pin the next mainnet cron slot 2h out. Without this, a run landing in
+      // the 5-min buffer before an even UTC hour starts with an expired deadline.
+      jest.spyOn(EcosystemService, 'nextMainnetCronAt').mockImplementation(
+        () => new Date(Date.now() + 2 * 60 * 60 * 1000),
+      );
       // No previous snapshot by default — per-test can override.
       ecoModel.findOne = jest.fn(() => ({
         sort: () => ({ lean: () => ({ exec: async () => null }) }),
@@ -8383,6 +8388,8 @@ describe('EcosystemService', () => {
     });
 
     it('nextMainnetCronAt rounds UP to the next even UTC hour strictly after `from`', () => {
+      // This test asserts the real rounding math — undo the describe-level pin.
+      (EcosystemService.nextMainnetCronAt as unknown as jest.SpyInstance).mockRestore();
       const ES = EcosystemService;
       // Odd UTC hour → next even.
       expect(ES.nextMainnetCronAt(new Date('2026-04-24T19:00:00.000Z')).toISOString())
