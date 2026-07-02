@@ -120,11 +120,14 @@ jobs:
   deploy:
     needs: [api-test]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    # Serialize deploys — parallel main pushes (or fast-follow commits) can't
-    # race on the SSH deploy step. Pair with the flock inside scripts/deploy.sh
-    # so direct invocations on the server are also safe.
+    # Serialize deploys per host — parallel main pushes (or fast-follow
+    # commits) can't race on the SSH deploy step. Pair with the flock inside
+    # scripts/deploy.sh so direct invocations on the server are also safe.
+    # The group must include the matrix host: one shared group holds a single
+    # pending slot, so stacked runs starve out whichever leg queues second
+    # (a 5-merge burst on 2026-07-02 cancelled every scanner deploy).
     concurrency:
-      group: deploy-main
+      group: deploy-main-${{ matrix.host.name }}
       cancel-in-progress: false
     runs-on: ubuntu-latest
     strategy:
