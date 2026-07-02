@@ -1613,7 +1613,9 @@ export class EcosystemService implements OnModuleInit, OnApplicationShutdown {
     try {
       raw = await Promise.race([this.captureRaw(), timeout]);
     } catch (e) {
-      throw new Error(`[dry-run] capture against ${this.graphqlUrl} failed: ${(e as Error).message}`);
+      throw new Error(`[dry-run] capture against ${this.graphqlUrl} failed: ${(e as Error).message}`, {
+        cause: e,
+      });
     } finally {
       clearTimeout(timeoutHandle);
     }
@@ -5228,7 +5230,8 @@ export class EcosystemService implements OnModuleInit, OnApplicationShutdown {
     const probed: PackageFact[] = [];
     const failedPackages: { address: string; error: string }[] = [];
     let cursor = startCursor;
-    let wrapped = false;
+    // Only read after the loop, and every `break` sets it first.
+    let wrapped: boolean;
     // Track how many probed packages have already been flushed via
     // `onCheckpoint` so each flush ships only the un-checkpointed tail.
     let lastCheckpointed = 0;
