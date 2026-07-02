@@ -1,5 +1,5 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { Document } from 'mongoose';
+import { Document, Schema as MongooseSchema } from 'mongoose';
 
 /**
  * Cross-process distributed lock for capture paths. Per-instance guards
@@ -35,4 +35,4 @@ export class CaptureLock extends Document<string, any, any> {
   @Prop({ type: String, default: null }) holderHostname: string | null;
 }
 
-export const CaptureLockSchema = SchemaFactory.createForClass(CaptureLock);
+export const CaptureLockSchema: MongooseSchema<CaptureLock> = SchemaFactory.createForClass(CaptureLock);
