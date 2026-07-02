@@ -281,6 +281,13 @@ describe('EcosystemController', () => {
       service.getLatest.mockResolvedValue({ l1: [mkProject()], l2: [] });
       await expect(controller.getProject('ghost')).rejects.toThrow(NotFoundException);
     });
+
+    it('tolerates snapshots missing the l1 or l2 key entirely', async () => {
+      service.getLatest.mockResolvedValue({ l1: [mkProject()] });
+      await expect(controller.getProject('p1')).resolves.toMatchObject({ slug: 'p1' });
+      service.getLatest.mockResolvedValue({ l2: [mkProject({ slug: 'p2', layer: 'L2' })] });
+      await expect(controller.getProject('p2')).resolves.toMatchObject({ slug: 'p2' });
+    });
   });
 
   describe('GET /ecosystem/project/:slug/events', () => {
@@ -310,6 +317,14 @@ describe('EcosystemController', () => {
       });
       const result = await controller.getProjectEvents('p1');
       expect(result.module).toBeNull();
+    });
+
+    it('tolerates snapshots missing the l1 or l2 key', async () => {
+      const bare = mkProject({ slug: 'bare', packageAddress: null, latestPackageAddress: null, packageAddresses: [], modules: [] });
+      service.getLatest.mockResolvedValue({ l1: [bare] });
+      await expect(controller.getProjectEvents('bare')).resolves.toMatchObject({ module: null });
+      service.getLatest.mockResolvedValue({ l2: [bare] });
+      await expect(controller.getProjectEvents('bare')).resolves.toMatchObject({ module: null });
     });
 
     it('fetches events newest-first, defaulting limit to 20 and capping at 50', async () => {
@@ -484,6 +499,40 @@ describe('EcosystemController', () => {
       const result = await controller.getProjectEvents('p1');
       expect(result).toEqual({ events: [], module: '0xaa::mod', error: 'network down' });
     });
+
+    it('falls back to a generic error message on a message-less rejection', async () => {
+      service.getLatest.mockResolvedValue({ l1: [mkProject()], l2: [] });
+      fetchMock.mockRejectedValue('boom');
+      const result = await controller.getProjectEvents('p1');
+      expect(result).toEqual({ events: [], module: '0xaa::mod', error: 'fetch failed' });
+    });
+
+    it('treats a malformed GraphQL payload without errors as an empty page', async () => {
+      service.getLatest.mockResolvedValue({ l1: [mkProject()], l2: [] });
+      fetchMock.mockResolvedValue({ json: async () => ({ data: {} }) });
+      const result = await controller.getProjectEvents('p1');
+      expect(result).toEqual({ events: [], module: '0xaa::mod' });
+    });
+
+    it('sorts timestamp-less events to the end of the merged list', async () => {
+      service.getLatest.mockResolvedValue({ l1: [mkProject()], l2: [] });
+      fetchMock.mockResolvedValue({
+        json: async () => ({
+          data: {
+            events: {
+              nodes: [
+                { timestamp: null, type: { repr: 'a::b::N1' }, json: {}, sender: { address: '0xs' } },
+                { timestamp: null, type: { repr: 'a::b::N2' }, json: {}, sender: { address: '0xs' } },
+                { timestamp: '2026-01-01T00:00:00Z', type: { repr: 'a::b::Real' }, json: {}, sender: { address: '0xs' } },
+              ],
+            },
+          },
+        }),
+      });
+      const result = await controller.getProjectEvents('p1');
+      expect(result.events[0].type).toBe('Real');
+      expect(result.events).toHaveLength(3);
+    });
   });
 
   describe('GET /ecosystem/project/:slug/activity', () => {
@@ -495,6 +544,14 @@ describe('EcosystemController', () => {
     it('404s when the slug is unknown', async () => {
       service.getLatest.mockResolvedValue({ l1: [mkProject()], l2: [] });
       await expect(controller.getProjectActivity('ghost')).rejects.toThrow(NotFoundException);
+    });
+
+    it('tolerates snapshots missing the l1 or l2 key', async () => {
+      const bare = mkProject({ slug: 'bare', packageAddress: null, latestPackageAddress: null, packageAddresses: [], modules: [], tvl: null });
+      service.getLatest.mockResolvedValue({ l1: [bare] });
+      await expect(controller.getProjectActivity('bare')).resolves.toMatchObject({ eventsPerDay: [] });
+      service.getLatest.mockResolvedValue({ l2: [bare] });
+      await expect(controller.getProjectActivity('bare')).resolves.toMatchObject({ eventsPerDay: [] });
     });
 
     it('returns empty buckets for an L2 project without a package', async () => {
@@ -866,6 +923,58 @@ describe('EcosystemController', () => {
       expect(fetchMock).toHaveBeenCalledTimes(2);
       expect(fetchMock.mock.calls[0][1].body).toMatch(/emittingModule: \\?"0xlatest::mod\\?"/);
       expect(fetchMock.mock.calls[1][1].body).toMatch(/emittingModule: \\?"0xfirst::mod\\?"/);
+    });
+
+    it('probes latest and anchor addresses when packageAddresses is null (pre-array shape)', async () => {
+      service.getLatest.mockResolvedValue({
+        l1: [mkProject({
+          modules: ['mod'],
+          packageAddress: '0xfirst',
+          latestPackageAddress: '0xlatest',
+          packageAddresses: null,
+        })],
+        l2: [],
+      });
+      fetchMock.mockResolvedValue({
+        json: async () => ({ data: { events: { nodes: [], pageInfo: { hasPreviousPage: false, startCursor: null } } } }),
+      });
+      await controller.getProjectActivity('p1');
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+
+    it('treats a malformed GraphQL payload without errors as an empty complete chain', async () => {
+      service.getLatest.mockResolvedValue({
+        l1: [mkProject({ modules: ['modA'] })],
+        l2: [],
+      });
+      fetchMock.mockResolvedValue({ json: async () => ({ data: {} }) });
+      const result = await controller.getProjectActivity('p1');
+      expect(result.eventsPerDay).toEqual([]);
+      expect(result.window).toEqual({ from: null, truncated: false });
+    });
+
+    it("buckets timestamp-less events as 'unknown' day even while trimming", async () => {
+      service.getLatest.mockResolvedValue({
+        l1: [mkProject({ modules: ['modA'] })],
+        l2: [],
+      });
+      // Chain hits the page cap; the null-timestamp events survive the trim
+      fetchMock.mockResolvedValue({
+        json: async () => ({
+          data: {
+            events: {
+              nodes: [
+                { timestamp: '2026-01-06T10:00:00Z', type: { repr: 'x::y::E' }, sender: { address: '0xs' } },
+                { timestamp: null, type: { repr: 'x::y::E' }, sender: { address: '0xs' } },
+              ],
+              pageInfo: { hasPreviousPage: true, startCursor: 'c' },
+            },
+          },
+        }),
+      });
+      const result = await controller.getProjectActivity('p1');
+      expect(result.eventsPerDay).toEqual([{ date: 'unknown', count: 10 }]);
+      expect(result.window).toEqual({ from: 'unknown', truncated: true });
     });
 
     it('falls back to packageAddress when latestPackageAddress is null', async () => {
