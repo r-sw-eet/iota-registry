@@ -23,10 +23,10 @@ import { Document } from 'mongoose';
 @Schema({ timestamps: true, collection: 'project_tx_digests' })
 export class ProjectTxDigest extends Document {
   @Prop({ required: true })
-  packageAddress: string;
+  packageAddress!: string;
 
   @Prop({ required: true })
-  digest: string;
+  digest!: string;
 
   /**
    * Sender address of the TX (lowercased) when the capture/backfill walk
@@ -37,7 +37,7 @@ export class ProjectTxDigest extends Document {
    * before ranking.
    */
   @Prop({ type: String, default: null })
-  sender: string | null;
+  sender!: string | null;
 }
 
 export const ProjectTxDigestSchema = SchemaFactory.createForClass(ProjectTxDigest);

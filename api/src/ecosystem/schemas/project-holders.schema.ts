@@ -27,23 +27,23 @@ import { Document } from 'mongoose';
 @Schema({ timestamps: true, collection: 'project_holders_state' })
 export class ProjectHolders extends Document {
   @Prop({ required: true })
-  packageAddress: string;
+  packageAddress!: string;
 
   /** Fully-qualified Move struct type — e.g. `0x35fa…::otterfly_1::OtterFly1NFT`. */
   @Prop({ required: true })
-  type: string;
+  type!: string;
 
   /** Opaque GraphQL endCursor marking the last object we've scanned. `null` only between first-sight anchor and first successful page. */
   @Prop({ type: String, default: null })
-  cursor: string | null;
+  cursor!: string | null;
 
   /** Diagnostic: total object nodes scanned across all forward-page calls. Mirrors `ProjectSenders.eventsScanned`. */
   @Prop({ required: true, default: 0 })
-  nodesScanned: number;
+  nodesScanned!: number;
 
   /** Count of Parent-owned nodes observed during the most-recent drain (objects sitting inside a marketplace listing / dynamic field wrapper — not held by a wallet). Resets to 0 per drain; snapshot bakes point-in-time value into `PackageFact.objectTypeCounts`. */
   @Prop({ required: true, default: 0 })
-  listedCount: number;
+  listedCount!: number;
 }
 
 export const ProjectHoldersSchema = SchemaFactory.createForClass(ProjectHolders);

@@ -33,23 +33,23 @@ export class ClassifiedSnapshot extends Document {
    * `network: undefined`; readers carry a transitional `$or` filter.
    */
   @Prop({ type: String, enum: ['mainnet', 'testnet', 'devnet'], default: 'mainnet', required: true, index: true })
-  network: string;
+  network!: string;
 
   /** References `OnchainSnapshot._id`. Unique — one classified doc per raw snapshot. */
   @Prop({ type: MongooseSchema.Types.ObjectId, required: true })
-  snapshotId: Types.ObjectId;
+  snapshotId!: Types.ObjectId;
 
   /** sha256 over `{projects: ALL_PROJECTS, teams: ALL_TEAMS, version: CLASSIFIER_VERSION}`. Mismatch → re-classify. */
   @Prop({ required: true })
-  registryHash: string;
+  registryHash!: string;
 
   /** When this classified view was computed. Diagnostic; not used by readers. */
   @Prop({ required: true })
-  classifiedAt: Date;
+  classifiedAt!: Date;
 
   /** Wall-clock cost of the classify run. Diagnostic; tracks the metric this collection exists to eliminate. */
   @Prop({ required: true, default: 0 })
-  classifyDurationMs: number;
+  classifyDurationMs!: number;
 
   /**
    * The deterministic classified view — `{l1, unattributed, totalProjects,

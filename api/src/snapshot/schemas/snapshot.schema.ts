@@ -5,88 +5,88 @@ import { Document } from 'mongoose';
 export class Snapshot extends Document {
   // The completed epoch this snapshot's gas/tx aggregates describe.
   @Prop({ required: true, unique: true })
-  epoch: number;
+  epoch!: number;
 
   // The in-progress epoch at capture time (epoch + 1). Lets the frontend
   // render the live/in-progress epoch as a placeholder without re-querying chain.
   @Prop()
-  currentEpoch: number;
+  currentEpoch!: number;
 
   @Prop()
-  timestamp: Date;
+  timestamp!: Date;
 
   @Prop()
-  totalSupply: number;
+  totalSupply!: number;
 
   @Prop()
-  circulatingSupply: number;
+  circulatingSupply!: number;
 
   @Prop()
-  circulatingPercentage: number;
+  circulatingPercentage!: number;
 
   @Prop()
-  totalStaked: number;
+  totalStaked!: number;
 
   @Prop()
-  stakingRatio: number;
+  stakingRatio!: number;
 
   @Prop()
-  storageFundTotal: number;
+  storageFundTotal!: number;
 
   @Prop()
-  storageFundNonRefundable: number;
+  storageFundNonRefundable!: number;
 
   @Prop()
-  validatorCount: number;
+  validatorCount!: number;
 
   @Prop()
-  validatorAvgApy: number;
+  validatorAvgApy!: number;
 
   @Prop()
-  validatorTargetReward: number;
+  validatorTargetReward!: number;
 
   @Prop()
-  weeklyInflation: number;
+  weeklyInflation!: number;
 
   @Prop()
-  networkTotalTransactions: number;
+  networkTotalTransactions!: number;
 
   @Prop()
-  referenceGasPrice: number;
+  referenceGasPrice!: number;
 
   @Prop()
-  storagePrice: number;
+  storagePrice!: number;
 
   @Prop()
-  checkpointCount: number;
+  checkpointCount!: number;
 
   // Gas burn / deflation data (from previous epoch)
   @Prop()
-  epochGasBurned: number;
+  epochGasBurned!: number;
 
   @Prop()
-  epochTransactions: number;
+  epochTransactions!: number;
 
   @Prop()
-  epochStorageNetInflow: number;
+  epochStorageNetInflow!: number;
 
   @Prop()
-  epochStorageFeesIn: number;
+  epochStorageFeesIn!: number;
 
   @Prop()
-  epochStorageRebatesOut: number;
+  epochStorageRebatesOut!: number;
 
   @Prop()
-  epochStakeRewards: number;
+  epochStakeRewards!: number;
 
   @Prop()
-  epochReferenceGasPrice: number;
+  epochReferenceGasPrice!: number;
 
   @Prop()
-  epochNonRefundableBalance: number;
+  epochNonRefundableBalance!: number;
 
   @Prop()
-  gasPerTransaction: number;
+  gasPerTransaction!: number;
 }
 
 export const SnapshotSchema = SchemaFactory.createForClass(Snapshot);

@@ -2274,7 +2274,7 @@ describe('EcosystemService', () => {
         startCursor: null,
       });
       jest.spyOn(service as any, 'collectDisplayMetadata').mockResolvedValue(new Map());
-      jest.spyOn(service as any, 'fetchEntryFunctions').mockImplementation(async (addr: string) => {
+      (jest.spyOn(service as any, 'fetchEntryFunctions') as jest.SpyInstance).mockImplementation(async (addr: string) => {
         if (addr === '0xAAA') throw new Error('simulated: entry fn fetch failed');
         return new Map();
       });
@@ -2337,8 +2337,7 @@ describe('EcosystemService', () => {
     // not per-package fanout.
     const stubProbes = () => {
       jest.spyOn(service as any, 'collectDisplayMetadata').mockResolvedValue(new Map());
-      jest
-        .spyOn(service as any, 'probeOnePackage')
+      (jest.spyOn(service as any, 'probeOnePackage') as jest.SpyInstance)
         .mockImplementation(async (pkg: any, _d: any, now: Date) => ({
           address: pkg.address,
           deployer: null,
@@ -7415,7 +7414,7 @@ describe('EcosystemService', () => {
             previousTransactionBlock: null,
           };
         });
-        const probeSpy = jest.spyOn(service as any, 'probeOnePackage').mockImplementation(
+        const probeSpy = (jest.spyOn(service as any, 'probeOnePackage') as jest.SpyInstance).mockImplementation(
           async (info: any, _d: any, now: Date, network: string) => ({
             address: info.address,
             deployer: null,
@@ -7466,7 +7465,7 @@ describe('EcosystemService', () => {
           modules: { nodes: [{ name: 'm' }] },
           previousTransactionBlock: null,
         }));
-        const probeSpy = jest.spyOn(service as any, 'probeOnePackage');
+        const probeSpy = jest.spyOn(service as any, 'probeOnePackage') as jest.SpyInstance;
         probeSpy.mockImplementationOnce(async () => {
           throw new Error('simulated probe fail');
         });
@@ -7519,7 +7518,7 @@ describe('EcosystemService', () => {
         let t = 1_000_000_000;
         jest.spyOn(Date, 'now').mockImplementation(() => t);
         const deadlineMs = t + 1;
-        jest.spyOn(service as any, 'probeOnePackage').mockImplementation(async (info: any, _d: any, now: Date) => {
+        (jest.spyOn(service as any, 'probeOnePackage') as jest.SpyInstance).mockImplementation(async (info: any, _d: any, now: Date) => {
           t += 500;
           return {
             address: info.address,
@@ -7562,7 +7561,7 @@ describe('EcosystemService', () => {
           modules: { nodes: [{ name: 'm' }] },
           previousTransactionBlock: null,
         }));
-        jest.spyOn(service as any, 'probeOnePackage').mockImplementation(async (info: any, _d: any, now: Date) => {
+        (jest.spyOn(service as any, 'probeOnePackage') as jest.SpyInstance).mockImplementation(async (info: any, _d: any, now: Date) => {
           if (failingSet.has(info.address)) {
             throw new Error(`probe failed for ${info.address}`);
           }
@@ -7622,7 +7621,7 @@ describe('EcosystemService', () => {
             previousTransactionBlock: null,
           };
         });
-        jest.spyOn(service as any, 'probeOnePackage').mockImplementation(async (info: any, _d: any, now: Date) => ({
+        (jest.spyOn(service as any, 'probeOnePackage') as jest.SpyInstance).mockImplementation(async (info: any, _d: any, now: Date) => ({
           address: info.address,
           deployer: null,
           storageRebateNanos: 0,
@@ -7746,7 +7745,7 @@ describe('EcosystemService', () => {
         modules: { nodes: [{ name: 'unique_real' }] },
         previousTransactionBlock: null,
       });
-      jest.spyOn(service as any, 'probeOnePackage').mockImplementation(async (info: any, _d: any, now: Date) => ({
+      (jest.spyOn(service as any, 'probeOnePackage') as jest.SpyInstance).mockImplementation(async (info: any, _d: any, now: Date) => ({
         address: info.address,
         deployer: '0xdepl',
         storageRebateNanos: 777,
@@ -8114,7 +8113,7 @@ describe('EcosystemService', () => {
         if (addr === '0xvanished') return null; // simulate pkg removed from chain source
         return { address: addr, storageRebate: '0', modules: { nodes: [{ name: 'm' }] }, previousTransactionBlock: null };
       });
-      const probeSpy = jest.spyOn(service as any, 'probeOnePackage').mockImplementation(async (info: any, _d: any, now: Date) => ({
+      const probeSpy = (jest.spyOn(service as any, 'probeOnePackage') as jest.SpyInstance).mockImplementation(async (info: any, _d: any, now: Date) => ({
         address: info.address,
         deployer: null,
         storageRebateNanos: 0,
@@ -8265,7 +8264,7 @@ describe('EcosystemService', () => {
       let t = 1_000_000_000;
       jest.spyOn(Date, 'now').mockImplementation(() => t);
       const deadlineMs = t + 1; // deadline 1ms from start
-      jest.spyOn(service as any, 'probeOnePackage').mockImplementation(async (info: any, _d: any, now: Date) => {
+      (jest.spyOn(service as any, 'probeOnePackage') as jest.SpyInstance).mockImplementation(async (info: any, _d: any, now: Date) => {
         // Move time past the deadline so the next iteration's deadlineMs check trips.
         t += 1000;
         return {

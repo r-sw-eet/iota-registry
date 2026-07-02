@@ -15,28 +15,28 @@ import { Document } from 'mongoose';
 @Schema({ timestamps: true, collection: 'schemaalerts' })
 export class SchemaAlert extends Document {
   /** Short kind tag for filtering. `bson-size-guard` | `invariant-violation` | ... */
-  @Prop({ required: true, index: true }) kind: string;
+  @Prop({ required: true, index: true }) kind!: string;
 
   /** Which collection the guarded write was targeting. Named `collectionName` because `collection` shadows a base Mongoose Document field. */
-  @Prop({ required: true }) collectionName: string;
+  @Prop({ required: true }) collectionName!: string;
 
   /** Which Mongoose op name — create/updateOne/insertMany/etc. */
-  @Prop({ required: true }) op: string;
+  @Prop({ required: true }) op!: string;
 
   /** `mainnet` | `testnet` | `devnet` | `unknown`. */
-  @Prop({ type: String, default: 'unknown' }) network: string;
+  @Prop({ type: String, default: 'unknown' }) network!: string;
 
   /** BSON size of the refused doc in bytes. */
-  @Prop({ type: Number, default: 0 }) sizeBytes: number;
+  @Prop({ type: Number, default: 0 }) sizeBytes!: number;
 
   /** Ceiling the guard enforces in bytes (so later readers know the threshold at time of trip). */
-  @Prop({ type: Number, default: 0 }) thresholdBytes: number;
+  @Prop({ type: Number, default: 0 }) thresholdBytes!: number;
 
   /** Free-form detail (e.g. sample field names, largest embedded array lengths). */
-  @Prop({ type: Object, default: {} }) detail: Record<string, unknown>;
+  @Prop({ type: Object, default: {} }) detail!: Record<string, unknown>;
 
   /** Human-readable message. */
-  @Prop({ required: true }) message: string;
+  @Prop({ required: true }) message!: string;
 }
 
 export const SchemaAlertSchema = SchemaFactory.createForClass(SchemaAlert);

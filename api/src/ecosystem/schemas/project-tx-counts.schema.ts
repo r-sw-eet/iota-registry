@@ -23,19 +23,19 @@ import { Document } from 'mongoose';
 @Schema({ timestamps: true, collection: 'project_tx_counts' })
 export class ProjectTxCounts extends Document {
   @Prop({ required: true })
-  packageAddress: string;
+  packageAddress!: string;
 
   /** Opaque GraphQL endCursor marking the last TX we've counted. `null` only between first-sight anchor and first successful page. */
   @Prop({ type: String, default: null })
-  cursor: string | null;
+  cursor!: string | null;
 
   /** Running cumulative TX count. Increments by `scanned` on each forward-page call. */
   @Prop({ required: true, default: 0 })
-  total: number;
+  total!: number;
 
   /** Diagnostic: total TX nodes scanned across all forward-page calls on this record. Mirrors `ProjectSenders.eventsScanned`. */
   @Prop({ required: true, default: 0 })
-  txsScanned: number;
+  txsScanned!: number;
 }
 
 export const ProjectTxCountsSchema = SchemaFactory.createForClass(ProjectTxCounts);

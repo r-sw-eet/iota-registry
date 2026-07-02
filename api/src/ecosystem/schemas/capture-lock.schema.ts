@@ -26,13 +26,13 @@ export class CaptureLock extends Document<string, any, any> {
   @Prop({ type: String, required: true }) declare _id: string;
 
   /** Until-when the lock is held. Null or `< now` means available. */
-  @Prop({ type: Date, default: null }) lockedUntil: Date | null;
+  @Prop({ type: Date, default: null }) lockedUntil!: Date | null;
 
   /** When the current holder acquired the lock. Diagnostic only; compare to lockedUntil to see TTL budget. */
-  @Prop({ type: Date, default: null }) lockedAt: Date | null;
+  @Prop({ type: Date, default: null }) lockedAt!: Date | null;
 
   /** Host that holds the lock (from `os.hostname()`). Diagnostic — makes "who stole my tick?" debuggable in multi-host setups. */
-  @Prop({ type: String, default: null }) holderHostname: string | null;
+  @Prop({ type: String, default: null }) holderHostname!: string | null;
 }
 
 export const CaptureLockSchema: MongooseSchema<CaptureLock> = SchemaFactory.createForClass(CaptureLock);
