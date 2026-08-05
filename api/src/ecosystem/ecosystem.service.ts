@@ -2063,7 +2063,6 @@ export class EcosystemService implements OnModuleInit, OnApplicationShutdown {
     let total = prevCount;
     let cursor: string | null = prevCursor;
     let fetched = 0;
-    let rewalked = false;
     let bailed = false;
 
     for (let i = 0; i < maxPages; i++) {
@@ -2088,36 +2087,31 @@ export class EcosystemService implements OnModuleInit, OnApplicationShutdown {
         if (!data.events.pageInfo.hasNextPage) return { count: total, cursor, capped: false };
       } catch (e) {
         const msg = (e as Error)?.message ?? '';
-        // A *stored* cursor whose checkpoint has aged out of the indexer's
-        // window rejects on the very first page. Resuming from it again next
-        // tick fails identically, so the counter freezes forever unless we
-        // drop it and re-walk from genesis. Cost the 2026-07-06 outage taught:
-        // 21 days offline staled every cursor at once.
-        if (!rewalked && fetched === 0 && prevCursor && EcosystemService.STALE_CURSOR_RE.test(msg)) {
+        // A *stored* cursor whose checkpoint aged out rejects on the first page.
+        // Do NOT rebuild by walking from genesis: the indexer prunes events
+        // (a null-cursor walk on mainnet started at 2026-07-07, measured
+        // 2026-08-05), so a "genesis" walk returns only the retained window and
+        // would overwrite a true cumulative total with a fraction of it. Hold
+        // the last known count and flag it; the cursor needs re-anchoring by
+        // another route.
+        if (fetched === 0 && prevCursor && EcosystemService.STALE_CURSOR_RE.test(msg)) {
           this.logger.warn(
-            `countEvents ${emittingModule}: stored cursor rejected (${msg}) - discarding it and re-walking from genesis`,
+            `countEvents ${emittingModule}: stored cursor is dead (${msg}) - holding ${total} as a floor, cursor needs re-anchoring`,
           );
-          rewalked = true;
-          cursor = null;
-          total = 0;
-          pageCount = 0;
-          continue;
+        } else {
+          this.logger.warn(
+            `countEvents ${emittingModule}: aborted after ${fetched} page(s) (${msg}) - reporting ${total} as a floor`,
+          );
         }
-        // Any other abort leaves `total` short of the truth. Report it as a
-        // floor rather than an exact count so it can never read as "no growth".
-        this.logger.warn(
-          `countEvents ${emittingModule}: aborted after ${fetched} page(s) (${msg}) - reporting ${total} as a floor`,
-        );
         bailed = true;
         break;
       }
     }
-    // Events are append-only, so the true count never falls below one we have
-    // already observed. An aborted genesis re-walk has `total` reset to a
-    // partial tally; publishing that would crater the curve for a module whose
-    // real count is unchanged. Floor it at whatever the last tick knew.
-    const floor = bailed ? Math.max(total, opts.prevCount ?? 0) : total;
-    return { count: floor, cursor, capped: bailed || pageCount >= maxPages * 50 };
+    // No clamp needed: `total` starts at the trusted `prevCount` and only ever
+    // increments, so a published count can never fall below one already
+    // observed. That invariant is why the walk must never reset `total` to 0 -
+    // doing so is what let a pruned-window walk overwrite a cumulative figure.
+    return { count: total, cursor, capped: bailed || pageCount >= maxPages * 50 };
   }
 
   /**

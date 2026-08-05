@@ -4441,94 +4441,57 @@ describe('EcosystemService', () => {
       expect(r).toEqual({ count: 1_484_566, cursor: 'cMar15', capped: false });
     });
 
-    it('stale stored cursor: discards it and re-walks from genesis rather than freezing the counter', async () => {
-      // The 2026-07-06 outage failure mode. 21 days offline aged every
-      // stored cursor past the indexer's checkpoint window; on recovery the
-      // resume page threw, the old `catch { break }` returned prevCount
-      // unchanged AND re-persisted the dead cursor, so every established
-      // module's event count sat frozen from then on.
-      fetchMock
-        .mockResolvedValueOnce({
-          json: async () => ({
-            errors: [{ message: "Indexer failed to read PostgresDB with error: 'Record not found'" }],
-          }),
-        })
-        .mockResolvedValueOnce({
-          json: async () => ({
-            data: {
-              events: {
-                nodes: Array.from({ length: 7 }, () => ({ __typename: 'E' })),
-                pageInfo: { hasNextPage: false, endCursor: 'cFresh' },
-              },
-            },
-          }),
-        });
-      const r = await count('0xpkg::mod', { prevCount: 1000, prevCursor: 'cDead' });
-      // prevCount is dropped along with the cursor: the genesis re-walk is
-      // authoritative, so keeping it would double-count.
-      expect(r).toEqual({ count: 7, cursor: 'cFresh', capped: false });
-      expect(fetchMock.mock.calls[0][1].body).toMatch(/after: \\?"cDead\\?"/);
-      expect(fetchMock.mock.calls[1][1].body).not.toMatch(/after:/);
-    });
-
     it.each([
       ['pruned checkpoint', 'Internal error occurred while processing request: Indexer failed to read PostgresDB with error: `Record not found`'],
       ['unreadable cursor string', 'Failed to parse "String": Invalid padding'],
-    ])('stale cursor (%s) triggers the genesis re-walk', async (_label, message) => {
-      // Both messages captured from mainnet GraphQL on 2026-08-05 by replaying
-      // a pruned cursor (tx=100 c=100) and a corrupt one.
-      fetchMock
-        .mockResolvedValueOnce({ json: async () => ({ errors: [{ message }] }) })
-        .mockResolvedValueOnce({
-          json: async () => ({
-            data: {
-              events: {
-                nodes: Array.from({ length: 3 }, () => ({ __typename: 'E' })),
-                pageInfo: { hasNextPage: false, endCursor: 'cFresh' },
-              },
+    ])('dead stored cursor (%s) holds the last count as a floor and never re-walks', async (_label, message) => {
+      // Measured on mainnet 2026-08-05: a null-cursor "genesis" walk starts at
+      // 2026-07-07, because the indexer prunes events to roughly a 30-day
+      // window. Re-walking therefore CANNOT rebuild a cumulative total - it
+      // replaces one with the retained window only. An earlier version of this
+      // fix did exactly that and cut the fleet from ~13M events to 157k.
+      fetchMock.mockResolvedValueOnce({ json: async () => ({ errors: [{ message }] }) });
+      const r = await count('0xpkg::mod', { prevCount: 278_311, prevCursor: 'cDead' });
+      expect(r).toEqual({ count: 278_311, cursor: 'cDead', capped: true });
+      // One attempt only: no second call, because there is no genesis retry.
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('a short walk never publishes below the carried-forward count', async () => {
+      // Same protection stated positively: even a "successful" walk that ends
+      // early (hasNextPage:false inside the retention window) must not lower a
+      // count. Append-only events cannot decline.
+      fetchMock.mockResolvedValueOnce({
+        json: async () => ({
+          data: {
+            events: {
+              nodes: Array.from({ length: 3 }, () => ({ __typename: 'E' })),
+              pageInfo: { hasNextPage: false, endCursor: 'cShort' },
             },
-          }),
-        });
-      const r = await count('0xpkg::mod', { prevCount: 500, prevCursor: 'cDead' });
-      expect(r).toEqual({ count: 3, cursor: 'cFresh', capped: false });
-    });
-
-    it('stale cursor: the genesis re-walk is attempted once, a second failure reports a floor', async () => {
-      fetchMock.mockResolvedValue({
-        json: async () => ({ errors: [{ message: 'Record not found' }] }),
+          },
+        }),
       });
-      const r = await count('0xpkg::mod', { prevCount: 1000, prevCursor: 'cDead' });
-      // Count holds at the carried-forward 1000 rather than collapsing to the
-      // 0 the abandoned re-walk reached: append-only events can't go backwards.
-      expect(r).toEqual({ count: 1000, cursor: null, capped: true });
-      // Exactly two attempts: the resume, then the one genesis retry.
-      expect(fetchMock).toHaveBeenCalledTimes(2);
+      const r = await count('0xpkg::mod', { prevCount: 278_311, prevCursor: null });
+      // prevCursor is null so prevCount is untrusted (bootstrap guard) - clamps
+      // against 0, and the honest small number stands.
+      expect(r).toEqual({ count: 3, cursor: 'cShort', capped: false });
     });
 
-    it('aborted genesis re-walk never publishes below the carried-forward count', async () => {
-      // Observed on the 2026-08-05 recovery tick: the fleet-wide re-walk
-      // tripped the endpoint's rate limiter, so a module could reset total to
-      // 0, count a few pages, then bail. Without the floor that publishes a
-      // collapsed number for a module whose real count never moved.
+    it('partial resume walk that ends below the carried-forward count is floored, not published', async () => {
       fetchMock
-        .mockResolvedValueOnce({
-          json: async () => ({ errors: [{ message: 'Record not found' }] }),
-        })
         .mockResolvedValueOnce({
           json: async () => ({
             data: {
               events: {
                 nodes: Array.from({ length: 50 }, () => ({ __typename: 'E' })),
-                pageInfo: { hasNextPage: true, endCursor: 'cPartial' },
+                pageInfo: { hasNextPage: true, endCursor: 'c1' },
               },
             },
           }),
         })
-        .mockResolvedValueOnce({
-          json: async () => ({ errors: [{ message: 'boom' }] }),
-        });
-      const r = await count('0xpkg::mod', { prevCount: 278_311, prevCursor: 'cDead' });
-      expect(r.count).toBe(278_311);
+        .mockResolvedValueOnce({ json: async () => ({ errors: [{ message: 'boom' }] }) });
+      const r = await count('0xpkg::mod', { prevCount: 278_311, prevCursor: 'c0' });
+      expect(r.count).toBe(278_361);
       expect(r.capped).toBe(true);
     });
 
