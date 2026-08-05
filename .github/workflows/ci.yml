@@ -28,7 +28,7 @@ jobs:
         run: npm run cov:check
         working-directory: api
       - name: Upload API coverage to Codecov
-        uses: codecov/codecov-action@v6
+        uses: codecov/codecov-action@v7
         with:
           files: ./api/coverage/lcov.info
           flags: api
