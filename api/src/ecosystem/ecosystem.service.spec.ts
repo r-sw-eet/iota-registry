@@ -4498,9 +4498,38 @@ describe('EcosystemService', () => {
         json: async () => ({ errors: [{ message: 'Record not found' }] }),
       });
       const r = await count('0xpkg::mod', { prevCount: 1000, prevCursor: 'cDead' });
-      expect(r).toEqual({ count: 0, cursor: null, capped: true });
+      // Count holds at the carried-forward 1000 rather than collapsing to the
+      // 0 the abandoned re-walk reached: append-only events can't go backwards.
+      expect(r).toEqual({ count: 1000, cursor: null, capped: true });
       // Exactly two attempts: the resume, then the one genesis retry.
       expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+
+    it('aborted genesis re-walk never publishes below the carried-forward count', async () => {
+      // Observed on the 2026-08-05 recovery tick: the fleet-wide re-walk
+      // tripped the endpoint's rate limiter, so a module could reset total to
+      // 0, count a few pages, then bail. Without the floor that publishes a
+      // collapsed number for a module whose real count never moved.
+      fetchMock
+        .mockResolvedValueOnce({
+          json: async () => ({ errors: [{ message: 'Record not found' }] }),
+        })
+        .mockResolvedValueOnce({
+          json: async () => ({
+            data: {
+              events: {
+                nodes: Array.from({ length: 50 }, () => ({ __typename: 'E' })),
+                pageInfo: { hasNextPage: true, endCursor: 'cPartial' },
+              },
+            },
+          }),
+        })
+        .mockResolvedValueOnce({
+          json: async () => ({ errors: [{ message: 'boom' }] }),
+        });
+      const r = await count('0xpkg::mod', { prevCount: 278_311, prevCursor: 'cDead' });
+      expect(r.count).toBe(278_311);
+      expect(r.capped).toBe(true);
     });
 
     it('non-cursor error on resume keeps the carried-forward count but flags it as a floor', async () => {
@@ -8710,6 +8739,30 @@ describe('EcosystemService', () => {
       await jest.advanceTimersByTimeAsync(6500); // 2s + 4s backoff
       await assertion;
       expect(fetchMock).toHaveBeenCalledTimes(3);
+      jest.useRealTimers();
+    });
+
+    it('graphql() surfaces an HTTP status instead of letting a plain-text body become an opaque JSON parse error', async () => {
+      jest.useFakeTimers();
+      // The 2026-08-05 recovery tick: the fleet-wide event re-walk tripped the
+      // endpoint's rate limiter. A 429 body is plain text, so res.json() threw
+      // `Unexpected token 'T', "Too Many Requests" is not valid JSON` - which
+      // matched no retry rule, so ~1100 modules gave up on their first page.
+      fetchMock
+        .mockResolvedValueOnce({
+          status: 429,
+          statusText: 'Too Many Requests',
+          json: async () => {
+            throw new SyntaxError('Unexpected token \'T\', "Too Many Requests" is not valid JSON');
+          },
+        } as any)
+        .mockResolvedValueOnce({ json: async () => ({ data: { ok: true } }) });
+      jest.spyOn((service as any).logger, 'warn').mockImplementation(() => {});
+      const p = (service as any).graphql('{ ok }');
+      // Rate limiting backs off 15s, not the 2s used for socket faults.
+      await jest.advanceTimersByTimeAsync(15_100);
+      await expect(p).resolves.toEqual({ ok: true });
+      expect(fetchMock).toHaveBeenCalledTimes(2);
       jest.useRealTimers();
     });
 

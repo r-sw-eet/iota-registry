@@ -1794,7 +1794,10 @@ export class EcosystemService implements OnModuleInit, OnApplicationShutdown {
    * this because mainnet's endpoint doesn't exhibit the 40s ceiling.
    */
   private static readonly GRAPHQL_MAX_ATTEMPTS = 3;
-  private static readonly GRAPHQL_RETRYABLE_RE = /timed? ?out|timeout|ECONNRESET|ETIMEDOUT|socket hang up|5\d\d/i;
+  private static readonly GRAPHQL_RETRYABLE_RE =
+    /timed? ?out|timeout|ECONNRESET|ETIMEDOUT|socket hang up|5\d\d|\b429\b|too many requests/i;
+  /** Rate limiting needs a longer wait than a transient socket fault - backing off 2s just re-trips it. */
+  private static readonly GRAPHQL_RATE_LIMIT_RE = /\b429\b|too many requests/i;
   /**
    * Rejections that condemn a *stored* cursor rather than the query. Two
    * observed families: a pruned checkpoint ("Indexer failed to read PostgresDB
@@ -1815,6 +1818,10 @@ export class EcosystemService implements OnModuleInit, OnApplicationShutdown {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ query }),
         });
+        // Rate-limit and gateway replies arrive as plain text, so res.json()
+        // would surface them as an opaque "Unexpected token" SyntaxError that
+        // matches no retry rule. Read the status first and keep it in the message.
+        if (res.status >= 400) throw new Error(`HTTP ${res.status} ${res.statusText ?? ''}`.trim());
         const json: any = await res.json();
         if (json.errors?.length) throw new Error(json.errors[0].message);
         return json.data;
@@ -1822,7 +1829,10 @@ export class EcosystemService implements OnModuleInit, OnApplicationShutdown {
         lastError = e as Error;
         const retryable = EcosystemService.GRAPHQL_RETRYABLE_RE.test(lastError.message);
         if (attempt < EcosystemService.GRAPHQL_MAX_ATTEMPTS && retryable) {
-          const delayMs = 2000 * Math.pow(2, attempt - 1); // 2s, 4s
+          const rateLimited = EcosystemService.GRAPHQL_RATE_LIMIT_RE.test(lastError.message);
+          const delayMs = rateLimited
+            ? 15000 * attempt // 15s, 30s
+            : 2000 * Math.pow(2, attempt - 1); // 2s, 4s
           this.logger.warn(
             `GraphQL attempt ${attempt}/${EcosystemService.GRAPHQL_MAX_ATTEMPTS} failed against ${url}: ${lastError.message} — retrying in ${delayMs}ms`,
           );
@@ -2102,7 +2112,12 @@ export class EcosystemService implements OnModuleInit, OnApplicationShutdown {
         break;
       }
     }
-    return { count: total, cursor, capped: bailed || pageCount >= maxPages * 50 };
+    // Events are append-only, so the true count never falls below one we have
+    // already observed. An aborted genesis re-walk has `total` reset to a
+    // partial tally; publishing that would crater the curve for a module whose
+    // real count is unchanged. Floor it at whatever the last tick knew.
+    const floor = bailed ? Math.max(total, opts.prevCount ?? 0) : total;
+    return { count: floor, cursor, capped: bailed || pageCount >= maxPages * 50 };
   }
 
   /**
