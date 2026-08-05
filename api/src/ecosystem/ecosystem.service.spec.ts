@@ -4347,13 +4347,15 @@ describe('EcosystemService', () => {
       expect(fetchMock.mock.calls[1][1].body).toMatch(/after: \\?"c1\\?"/);
     });
 
-    it('breaks and returns current total on a thrown page', async () => {
+    it('breaks and returns current total as a floor on a thrown page', async () => {
       fetchMock.mockResolvedValueOnce({
         json: async () => ({ errors: [{ message: 'boom' }] }),
       });
       const r = await count('0xpkg::mod');
       // No pages succeeded → cursor stays null (no resume point yet).
-      expect(r).toEqual({ count: 0, cursor: null, capped: false });
+      // capped=true because 0 is a floor here, not a measured zero: reporting
+      // it as exact is what let the 2026-07 freeze read as "no growth".
+      expect(r).toEqual({ count: 0, cursor: null, capped: true });
     });
 
     it('flags capped=true when hitting the maxPages limit', async () => {
@@ -4437,6 +4439,101 @@ describe('EcosystemService', () => {
       });
       const r = await count('0xpkg::mod', { prevCount: 1_484_566, prevCursor: 'cMar15' });
       expect(r).toEqual({ count: 1_484_566, cursor: 'cMar15', capped: false });
+    });
+
+    it('stale stored cursor: discards it and re-walks from genesis rather than freezing the counter', async () => {
+      // The 2026-07-06 outage failure mode. 21 days offline aged every
+      // stored cursor past the indexer's checkpoint window; on recovery the
+      // resume page threw, the old `catch { break }` returned prevCount
+      // unchanged AND re-persisted the dead cursor, so every established
+      // module's event count sat frozen from then on.
+      fetchMock
+        .mockResolvedValueOnce({
+          json: async () => ({
+            errors: [{ message: "Indexer failed to read PostgresDB with error: 'Record not found'" }],
+          }),
+        })
+        .mockResolvedValueOnce({
+          json: async () => ({
+            data: {
+              events: {
+                nodes: Array.from({ length: 7 }, () => ({ __typename: 'E' })),
+                pageInfo: { hasNextPage: false, endCursor: 'cFresh' },
+              },
+            },
+          }),
+        });
+      const r = await count('0xpkg::mod', { prevCount: 1000, prevCursor: 'cDead' });
+      // prevCount is dropped along with the cursor: the genesis re-walk is
+      // authoritative, so keeping it would double-count.
+      expect(r).toEqual({ count: 7, cursor: 'cFresh', capped: false });
+      expect(fetchMock.mock.calls[0][1].body).toMatch(/after: \\?"cDead\\?"/);
+      expect(fetchMock.mock.calls[1][1].body).not.toMatch(/after:/);
+    });
+
+    it.each([
+      ['pruned checkpoint', 'Internal error occurred while processing request: Indexer failed to read PostgresDB with error: `Record not found`'],
+      ['unreadable cursor string', 'Failed to parse "String": Invalid padding'],
+    ])('stale cursor (%s) triggers the genesis re-walk', async (_label, message) => {
+      // Both messages captured from mainnet GraphQL on 2026-08-05 by replaying
+      // a pruned cursor (tx=100 c=100) and a corrupt one.
+      fetchMock
+        .mockResolvedValueOnce({ json: async () => ({ errors: [{ message }] }) })
+        .mockResolvedValueOnce({
+          json: async () => ({
+            data: {
+              events: {
+                nodes: Array.from({ length: 3 }, () => ({ __typename: 'E' })),
+                pageInfo: { hasNextPage: false, endCursor: 'cFresh' },
+              },
+            },
+          }),
+        });
+      const r = await count('0xpkg::mod', { prevCount: 500, prevCursor: 'cDead' });
+      expect(r).toEqual({ count: 3, cursor: 'cFresh', capped: false });
+    });
+
+    it('stale cursor: the genesis re-walk is attempted once, a second failure reports a floor', async () => {
+      fetchMock.mockResolvedValue({
+        json: async () => ({ errors: [{ message: 'Record not found' }] }),
+      });
+      const r = await count('0xpkg::mod', { prevCount: 1000, prevCursor: 'cDead' });
+      expect(r).toEqual({ count: 0, cursor: null, capped: true });
+      // Exactly two attempts: the resume, then the one genesis retry.
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+
+    it('non-cursor error on resume keeps the carried-forward count but flags it as a floor', async () => {
+      fetchMock.mockResolvedValueOnce({
+        json: async () => ({ errors: [{ message: 'boom' }] }),
+      });
+      const r = await count('0xpkg::mod', { prevCount: 1000, prevCursor: 'c100' });
+      // Not a cursor problem, so no expensive genesis re-walk — but the count
+      // is stale, so it must not be published as exact.
+      expect(r).toEqual({ count: 1000, cursor: 'c100', capped: true });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('mid-walk cursor rejection reports the partial total as a floor without re-walking', async () => {
+      fetchMock
+        .mockResolvedValueOnce({
+          json: async () => ({
+            data: {
+              events: {
+                nodes: Array.from({ length: 50 }, () => ({ __typename: 'E' })),
+                pageInfo: { hasNextPage: true, endCursor: 'c1' },
+              },
+            },
+          }),
+        })
+        .mockResolvedValueOnce({
+          json: async () => ({ errors: [{ message: 'Record not found' }] }),
+        });
+      const r = await count('0xpkg::mod');
+      // A page already succeeded, so the cursor in hand is fresh — this is a
+      // transient indexer fault, not the stale-stored-cursor case.
+      expect(r).toEqual({ count: 50, cursor: 'c1', capped: true });
+      expect(fetchMock).toHaveBeenCalledTimes(2);
     });
   });
 

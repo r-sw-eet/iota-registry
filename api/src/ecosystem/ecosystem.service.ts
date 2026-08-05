@@ -1795,6 +1795,15 @@ export class EcosystemService implements OnModuleInit, OnApplicationShutdown {
    */
   private static readonly GRAPHQL_MAX_ATTEMPTS = 3;
   private static readonly GRAPHQL_RETRYABLE_RE = /timed? ?out|timeout|ECONNRESET|ETIMEDOUT|socket hang up|5\d\d/i;
+  /**
+   * Rejections that condemn a *stored* cursor rather than the query. Two
+   * observed families: a pruned checkpoint ("Indexer failed to read PostgresDB
+   * with error: `Record not found`") and an unreadable cursor string
+   * ("Failed to parse \"String\": Invalid padding"). Both freeze a module
+   * forever if the cursor is kept, so both must trigger a genesis re-walk.
+   */
+  private static readonly STALE_CURSOR_RE =
+    /record not found|invalid cursor|cursor not found|unknown cursor|failed to parse/i;
 
   private async graphql(query: string): Promise<any> {
     const url = this.graphqlUrlContext.getStore() ?? this.graphqlUrl;
@@ -2016,10 +2025,14 @@ export class EcosystemService implements OnModuleInit, OnApplicationShutdown {
    *   - `null` only if the module has never had any events AND we have
    *     no prior cursor — i.e. nothing to resume from yet.
    *
-   * Append-only events on a finalized chain make this safe: stored
-   * cursors stay valid across days/weeks; old events never disappear,
-   * never re-order. See `plans/limits.md` § Events pagination for
-   * the empirical probe that proved cursor continuity.
+   * Append-only events on a finalized chain make the *ordering* safe: old
+   * events never disappear, never re-order. See `plans/limits.md` § Events
+   * pagination for the empirical probe that proved cursor continuity.
+   *
+   * Cursor *validity* is a separate matter, and is bounded: a consistent
+   * cursor embeds the checkpoint it was made at, and resuming from one that
+   * has aged out of the indexer's window is rejected. When that happens the
+   * cursor is discarded and the module re-walks from genesis.
    */
   private async countEvents(
     emittingModule: string,
@@ -2039,6 +2052,9 @@ export class EcosystemService implements OnModuleInit, OnApplicationShutdown {
     let pageCount = 0;
     let total = prevCount;
     let cursor: string | null = prevCursor;
+    let fetched = 0;
+    let rewalked = false;
+    let bailed = false;
 
     for (let i = 0; i < maxPages; i++) {
       const afterClause: string = cursor ? `, after: "${cursor}"` : '';
@@ -2049,6 +2065,7 @@ export class EcosystemService implements OnModuleInit, OnApplicationShutdown {
             pageInfo { hasNextPage endCursor }
           }
         }`);
+        fetched++;
         total += data.events.nodes.length;
         pageCount += data.events.nodes.length;
         if (data.events.pageInfo.endCursor) {
@@ -2059,11 +2076,33 @@ export class EcosystemService implements OnModuleInit, OnApplicationShutdown {
           cursor = data.events.pageInfo.endCursor;
         }
         if (!data.events.pageInfo.hasNextPage) return { count: total, cursor, capped: false };
-      } catch {
+      } catch (e) {
+        const msg = (e as Error)?.message ?? '';
+        // A *stored* cursor whose checkpoint has aged out of the indexer's
+        // window rejects on the very first page. Resuming from it again next
+        // tick fails identically, so the counter freezes forever unless we
+        // drop it and re-walk from genesis. Cost the 2026-07-06 outage taught:
+        // 21 days offline staled every cursor at once.
+        if (!rewalked && fetched === 0 && prevCursor && EcosystemService.STALE_CURSOR_RE.test(msg)) {
+          this.logger.warn(
+            `countEvents ${emittingModule}: stored cursor rejected (${msg}) - discarding it and re-walking from genesis`,
+          );
+          rewalked = true;
+          cursor = null;
+          total = 0;
+          pageCount = 0;
+          continue;
+        }
+        // Any other abort leaves `total` short of the truth. Report it as a
+        // floor rather than an exact count so it can never read as "no growth".
+        this.logger.warn(
+          `countEvents ${emittingModule}: aborted after ${fetched} page(s) (${msg}) - reporting ${total} as a floor`,
+        );
+        bailed = true;
         break;
       }
     }
-    return { count: total, cursor, capped: pageCount >= maxPages * 50 };
+    return { count: total, cursor, capped: bailed || pageCount >= maxPages * 50 };
   }
 
   /**
