@@ -51,13 +51,15 @@ useHead({ title: 'Privacy Policy — IOTA Registry' })
     <section>
       <h2>Web Analytics</h2>
       <p>
-        We use Plausible Analytics, a privacy-friendly, cookieless analytics service provided by Plausible Insights OÜ, Västriku tn 2, 50403 Tartu, Estonia.
-        Plausible loads a small script from <code>plausible.io</code> and records aggregated page view data (page URL, referrer, browser, operating system, device
-        type and a coarse country derived from the IP address).
+        We use Plausible Analytics (Community Edition), open-source, cookieless analytics software. We run it ourselves on our own server in Germany
+        (<code>plausible.forgecloud.de</code>), provided by Hetzner Online GmbH, Industriestr. 25, 91710 Gunzenhausen, Germany, at its Nuremberg location. The data
+        is not transferred to Plausible Insights OÜ or any other third party. The script records aggregated page view data (page URL, referrer, browser, operating
+        system, device type and a coarse location derived from the IP address).
       </p>
       <p>
-        Plausible does not use cookies, does not store or share personal data, does not retain IP addresses, and does not track visitors across sites or over time.
-        All data is aggregated and cannot be traced back to an individual. Data is processed on EU-hosted infrastructure.
+        Plausible does not use cookies and does not store IP addresses. To count unique visitors, it builds a hash from the IP address, the browser's user-agent
+        and a random value that changes every 24 hours; the old value is deleted, so a visitor cannot be recognized across days or across sites. All data is
+        aggregated and cannot be traced back to an individual.
       </p>
       <p>
         The legal basis for this processing is our legitimate interest in understanding overall site usage to improve the service (Art. 6 (1) (f) GDPR). You can

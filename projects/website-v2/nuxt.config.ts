@@ -57,7 +57,7 @@ export default defineNuxtConfig({
       ],
       script: plausibleEnabled
         ? [
-            { src: 'https://plausible.io/js/pa-DWMfDCTX_xttSKfBSXbM1.js', async: true },
+            { src: 'https://plausible.forgecloud.de/js/pa-6R5OHTONEY6zMj8itFnOT.js', async: true },
             {
               innerHTML:
                 'window.plausible=window.plausible||function(){(plausible.q=plausible.q||[]).push(arguments)},plausible.init=plausible.init||function(i){plausible.o=i||{}};plausible.init()',
